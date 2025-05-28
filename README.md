@@ -124,3 +124,7 @@ SHARE_GRADIO=true
 ## 📝 Licencia
 
 MIT License - ver LICENSE para detalles.
+![image](https://github.com/user-attachments/assets/8b4079ef-83f8-43d4-8b1f-6d4411c837cd)
+![image](https://github.com/user-attachments/assets/a7684860-7773-43fc-8287-336298720e8e)
+
+
