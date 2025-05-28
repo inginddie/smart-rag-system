@@ -1,0 +1,38 @@
+# Core LangChain packages
+langchain>=0.2.0
+langchain-openai>=0.1.0
+langchain-chroma>=0.1.2
+langchain-community>=0.2.0
+
+# UI Framework
+gradio>=4.20.0
+
+# Configuration and Environment
+python-dotenv>=1.0.0
+pydantic>=2.6.0
+
+# Logging
+loguru>=0.7.2
+
+# Document Processing
+pypdf>=4.0.0
+python-docx>=1.1.0
+docx2txt>=0.8
+
+# Vector Database
+chromadb>=0.4.0
+
+# HTTP requests (for potential web scraping)
+requests>=2.31.0
+
+# Development and Testing
+pytest>=7.4.0
+black>=23.12.0
+isort>=5.13.0
+
+# Additional utilities
+numpy>=1.24.0
+pandas>=2.0.0
+
+# OpenAI (backup direct client)
+openai>=1.0.0
