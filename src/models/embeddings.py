@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 from typing import Optional
-from langchain_openai import OpenAIEmbeddings
+try:
+    from langchain_openai import OpenAIEmbeddings
+except ImportError:  # pragma: no cover - optional dependency
+    OpenAIEmbeddings = None  # type: ignore
 from config.settings import settings
 from src.utils.logger import setup_logger
 from src.utils.exceptions import EmbeddingException
@@ -15,18 +18,27 @@ class EmbeddingManager:
         self._embeddings = None
         
     @property
-    def embeddings(self) -> OpenAIEmbeddings:
+    def embeddings(self):
         """Lazy loading de embeddings"""
+        if OpenAIEmbeddings is None:
+            raise EmbeddingException(
+                "OpenAIEmbeddings dependency is required but not installed"
+            )
+
         if self._embeddings is None:
             try:
                 self._embeddings = OpenAIEmbeddings(
                     model=self.model_name,
-                    openai_api_key=settings.openai_api_key
+                    openai_api_key=settings.openai_api_key,
                 )
-                logger.info(f"Initialized embeddings with model: {self.model_name}")
+                logger.info(
+                    f"Initialized embeddings with model: {self.model_name}"
+                )
             except Exception as e:
                 logger.error(f"Error initializing embeddings: {e}")
-                raise EmbeddingException(f"Failed to initialize embeddings: {e}")
+                raise EmbeddingException(
+                    f"Failed to initialize embeddings: {e}"
+                )
         
         return self._embeddings
     

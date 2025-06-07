@@ -2,8 +2,15 @@
 import os
 from typing import Optional
 from pydantic import Field
-from pydantic_settings import BaseSettings
-from dotenv import load_dotenv
+try:
+    from pydantic_settings import BaseSettings
+except ImportError:  # pragma: no cover - fallback for environments without pydantic_settings
+    from pydantic import BaseSettings
+try:
+    from dotenv import load_dotenv
+except ImportError:  # pragma: no cover - fallback if python-dotenv is missing
+    def load_dotenv(*args, **kwargs):
+        return False
 
 load_dotenv()
 
@@ -11,7 +18,7 @@ class Settings(BaseSettings):
     """Configuración centralizada con selección inteligente de modelos"""
     
     # OpenAI Configuration
-    openai_api_key: str = Field(..., env="OPENAI_API_KEY")
+    openai_api_key: str = Field(default="", env="OPENAI_API_KEY")
     
     # Modelos disponibles para selección inteligente
     simple_model: str = Field(default="gpt-4o-mini", env="SIMPLE_MODEL")

@@ -3,9 +3,14 @@ import os
 import shutil
 from typing import List, Optional
 from pathlib import Path
-from langchain_chroma import Chroma
-from langchain.schema import Document
-import chromadb
+try:
+    from langchain_chroma import Chroma
+    from langchain.schema import Document
+    import chromadb
+except ImportError:  # pragma: no cover - optional dependency
+    Chroma = None  # type: ignore
+    Document = None  # type: ignore
+    chromadb = None  # type: ignore
 from config.settings import settings
 from src.models.embeddings import EmbeddingManager
 from src.storage.document_processor import DocumentProcessor
@@ -56,6 +61,10 @@ class VectorStoreManager:
     def _initialize_chroma_client(self):
         """Inicializa el cliente Chroma directamente"""
         try:
+            if chromadb is None:
+                raise VectorStoreException(
+                    "chromadb dependency is required but not installed"
+                )
             # Crear cliente Chroma persistente
             client = chromadb.PersistentClient(path=self.persist_directory)
             
@@ -78,8 +87,12 @@ class VectorStoreManager:
             raise VectorStoreException(f"Failed to initialize Chroma client: {e}")
     
     @property
-    def vector_store(self) -> Chroma:
+    def vector_store(self):
         """Lazy loading de vector store con inicialización robusta"""
+        if Chroma is None:
+            raise VectorStoreException(
+                "langchain-chroma dependency is required but not installed"
+            )
         if self._vector_store is None:
             max_retries = 3
             
@@ -122,7 +135,7 @@ class VectorStoreManager:
         
         return self._vector_store
     
-    def add_documents(self, documents: List[Document]) -> List[str]:
+    def add_documents(self, documents):
         """Agrega documentos a la base vectorial"""
         if not documents:
             logger.warning("No documents to add")
@@ -225,7 +238,7 @@ class VectorStoreManager:
             logger.error(f"Error loading and indexing documents: {e}")
             raise VectorStoreException(f"Failed to load and index documents: {e}")
     
-    def similarity_search(self, query: str, k: int = 5) -> List[Document]:
+    def similarity_search(self, query: str, k: int = 5):
         """Búsqueda por similitud"""
         try:
             vs = self.vector_store
