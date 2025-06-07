@@ -2,9 +2,11 @@
 import pytest
 import tempfile
 import os
+import logging
 from pathlib import Path
 from src.services.rag_service import RAGService
 from src.utils.exceptions import RAGException
+from config.settings import settings
 
 class TestRAGService:
     """Tests para RAG Service"""
@@ -25,20 +27,49 @@ class TestRAGService:
     def test_initialization_without_documents(self, temp_dir):
         """Test de inicialización sin documentos"""
         # Configurar paths temporales
-        os.environ["DOCUMENTS_PATH"] = temp_dir
-        os.environ["VECTOR_DB_PATH"] = str(Path(temp_dir) / "vector_db")
-        os.environ["OPENAI_API_KEY"] = "test-key"
-        
+        settings.documents_path = temp_dir
+        settings.vector_db_path = str(Path(temp_dir) / "vector_db")
+        settings.openai_api_key = "test-key"
+
         rag_service = RAGService()
         result = rag_service.initialize()
 
         # La inicialización debería fallar debido a la falta de documentos
         assert result is False
+
+    def test_initialization_without_documents_logs_warning(self, temp_dir, caplog):
+        """La inicialización debe registrar advertencia cuando no hay documentos"""
+        settings.documents_path = temp_dir
+        settings.vector_db_path = str(Path(temp_dir) / "vector_db")
+        settings.openai_api_key = "test-key"
+
+        rag_service = RAGService()
+        with caplog.at_level(logging.WARNING):
+            result = rag_service.initialize()
+
+        assert result is False
+        assert any("No documents" in rec.message for rec in caplog.records)
     
     def test_query_without_initialization(self):
         """Test de consulta sin inicialización"""
-        os.environ["OPENAI_API_KEY"] = "test-key"
+        settings.openai_api_key = "test-key"
         rag_service = RAGService()
-        
+
         with pytest.raises(RAGException):
             rag_service.query("test question")
+
+    def test_initialization_with_document(self, temp_dir, sample_document, monkeypatch):
+        """La inicialización debería ser exitosa cuando hay documentos"""
+        settings.documents_path = temp_dir
+        settings.vector_db_path = str(Path(temp_dir) / "vector_db")
+        settings.openai_api_key = "test-key"
+
+        rag_service = RAGService()
+
+        monkeypatch.setattr(rag_service.vector_store_manager, "load_and_index_documents", lambda: 1)
+        monkeypatch.setattr(rag_service, "_needs_indexing", lambda: True)
+        monkeypatch.setattr(rag_service.rag_chain, "create_chain", lambda: None)
+
+        result = rag_service.initialize()
+
+        assert result is True
