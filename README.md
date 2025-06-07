@@ -100,6 +100,11 @@ Para consultar los registros:
 sqlite3 data/traces.db "SELECT * FROM llm_traces LIMIT 5;"
 ```
 
+Para exportar el costo diario a CSV:
+```bash
+python scripts/export_daily_cost.py
+```
+
 ## 🔧 Configuración Avanzada
 
 Personaliza la configuración en `.env`:
