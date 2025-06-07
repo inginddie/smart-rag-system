@@ -73,3 +73,33 @@ class TestRAGService:
         result = rag_service.initialize()
 
         assert result is True
+
+    def test_query_returns_answer_with_sources(self, monkeypatch, temp_dir):
+        """La consulta debe devolver respuesta y fuentes"""
+        settings.openai_api_key = "test-key"
+        rag_service = RAGService()
+        rag_service._initialized = True
+
+        from src.storage.document_processor import Document
+
+        sample_docs = [Document(page_content="Contenido de ejemplo", metadata={"source_file": "doc1.txt"})]
+
+        def fake_invoke(question):
+            return {
+                "answer": "Respuesta generada",
+                "context": sample_docs,
+                "model_info": {
+                    "selected_model": "fake-model",
+                    "complexity_score": 0.4,
+                    "reasoning": "mock",
+                },
+            }
+
+        monkeypatch.setattr(rag_service.rag_chain, "invoke", fake_invoke)
+
+        response = rag_service.query("Pregunta de prueba", include_sources=True)
+
+        assert response["answer"] == "Respuesta generada"
+        assert response["question"] == "Pregunta de prueba"
+        assert response["model_info"]["selected_model"] == "fake-model"
+        assert response["sources"][0]["metadata"]["source_file"] == "doc1.txt"
