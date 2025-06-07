@@ -32,3 +32,45 @@ class TestVectorStore:
         assert len(documents) == 1
         assert "prueba" in documents[0].page_content
         assert documents[0].metadata['source_file'] == str(test_file)
+
+    def test_document_processor_with_excel_file(self, temp_dir):
+        """Test procesamiento de archivo Excel"""
+        import pandas as pd
+
+        df = pd.DataFrame({"col1": [1, 2], "col2": ["a", "b"]})
+        excel_path = Path(temp_dir) / "test.xlsx"
+        df.to_excel(excel_path, index=False)
+
+        processor = DocumentProcessor()
+        documents = processor.load_documents(temp_dir)
+
+        assert len(documents) == 1
+        assert "a" in documents[0].page_content
+
+    def test_load_from_postgres(self, monkeypatch):
+        """Test carga de datos desde PostgreSQL"""
+        import pandas as pd
+
+        sample_df = pd.DataFrame({"text": ["fila1", "fila2"]})
+
+        monkeypatch.setattr(
+            "pandas.read_sql_query",
+            lambda query, conn: sample_df,
+        )
+
+        class FakeConn:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                pass
+
+        monkeypatch.setattr(
+            "psycopg2.connect",
+            lambda conn_str: FakeConn(),
+        )
+
+        processor = DocumentProcessor()
+        docs = processor.load_from_postgres("dsn", "SELECT 1")
+        assert len(docs) == 1
+        assert "fila1" in docs[0].page_content

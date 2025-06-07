@@ -2,6 +2,16 @@
 import os
 from typing import List, Optional
 from pathlib import Path
+
+try:
+    import pandas as pd
+except ImportError:  # pragma: no cover - optional dependency
+    pd = None  # type: ignore
+
+try:
+    import psycopg2
+except ImportError:  # pragma: no cover - optional dependency
+    psycopg2 = None  # type: ignore
 try:
     from langchain_community.document_loaders import (
         TextLoader,
@@ -28,6 +38,22 @@ except ImportError:  # pragma: no cover - optional dependency
             with open(self.path, "r", encoding="utf-8") as f:
                 content = f.read()
             return [Document(page_content=content, metadata={})]
+
+    class ExcelLoader:
+        def __init__(self, path: str):
+            self.path = path
+
+        def load(self):
+            if pd is None:
+                raise ImportError("pandas is required for Excel loading")
+            df = pd.read_excel(self.path, engine="openpyxl")
+            text = (
+                df.astype(str)
+                .fillna("")
+                .agg(" ".join, axis=1)
+                .str.cat(sep="\n")
+            )
+            return [Document(page_content=text, metadata={})]
 from config.settings import settings
 from src.utils.logger import setup_logger
 from src.utils.exceptions import DocumentProcessingException
@@ -62,6 +88,8 @@ class DocumentProcessor:
             '.txt': TextLoader,
             '.pdf': PyPDFLoader,
             '.docx': Docx2txtLoader,
+            '.xls': ExcelLoader,
+            '.xlsx': ExcelLoader,
         }
     
     def _safe_load_file(self, file_path: Path, loader_class):
@@ -181,6 +209,29 @@ class DocumentProcessor:
         except Exception as e:
             logger.error(f"Error splitting documents: {e}")
             raise DocumentProcessingException(f"Failed to split documents: {e}")
+
+    def load_from_postgres(self, conn_str: str, query: str) -> List[Document]:
+        """Carga datos desde una base de datos PostgreSQL"""
+        if psycopg2 is None or pd is None:
+            raise DocumentProcessingException(
+                "PostgreSQL support requires psycopg2 and pandas"
+            )
+        try:
+            logger.info("Loading data from PostgreSQL...")
+            with psycopg2.connect(conn_str) as conn:
+                df = pd.read_sql_query(query, conn)
+            text = (
+                df.astype(str)
+                .fillna("")
+                .agg(" ".join, axis=1)
+                .str.cat(sep="\n")
+            )
+            return [Document(page_content=text, metadata={"source": "postgres"})]
+        except Exception as e:
+            logger.error(f"Error loading data from PostgreSQL: {e}")
+            raise DocumentProcessingException(
+                f"Failed to load data from PostgreSQL: {e}"
+            )
     
     def process_documents(self, path: Optional[str] = None):
         """Pipeline completo de procesamiento"""

@@ -5,7 +5,8 @@ Un sistema completo de Retrieval-Augmented Generation (RAG) construido con Pytho
 
 ## 🚀 Características
 
-- **Múltiples formatos de documentos**: PDF, TXT, DOCX
+- **Múltiples formatos de documentos**: PDF, TXT, DOCX, XLS/XLSX
+- **Soporte para datos en PostgreSQL**
 - **Interfaz web intuitiva** con Gradio
 - **Modo CLI** para consultas por línea de comandos
 - **Sistema de logging avanzado**
