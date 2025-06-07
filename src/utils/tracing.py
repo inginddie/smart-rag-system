@@ -206,7 +206,9 @@ def trace_llm(func: Callable) -> Callable:
             if tokens_input is not None or tokens_output is not None:
                 ti = tokens_input or 0
                 to = tokens_output or 0
-                cost_usd = (ti + to) / 1000 * 0.002
+                price = settings.model_prices.get(model)
+                if price is not None:
+                    cost_usd = (ti + to) / 1000 * price
             tracer_db.log_trace(
                 {
                     "timestamp": datetime.utcnow().isoformat(),
