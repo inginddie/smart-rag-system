@@ -92,6 +92,14 @@ black src/ ui/ tests/
 isort src/ ui/ tests/
 ```
 
+### Base de datos de trazas
+Cada llamada al LLM se registra en `data/traces.db`. Puedes cambiar la ruta con la variable `TRACE_DB_PATH`.
+
+Para consultar los registros:
+```bash
+sqlite3 data/traces.db "SELECT * FROM llm_traces LIMIT 5;"
+```
+
 ## 🔧 Configuración Avanzada
 
 Personaliza la configuración en `.env`:
