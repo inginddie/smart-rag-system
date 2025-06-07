@@ -4,8 +4,14 @@ import pytest
 
 from config.settings import settings
 from src.utils.exceptions import TracingException
-from src.utils.tracing import (TRACE_QUEUE, LLMTracer, Tracer,
-                               get_current_tracer, requires_tracer, trace_llm)
+from src.utils.tracing import (
+    TRACE_QUEUE,
+    LLMTracer,
+    Tracer,
+    get_current_tracer,
+    requires_tracer,
+    trace_llm,
+)
 
 
 def setup_temp_db(tmp_path):
@@ -49,6 +55,17 @@ def test_trace_contains_prompt_and_model(tmp_path):
     conn.close()
     assert row[0] == "mundo"
     assert row[1] == "test-model"
+
+
+def test_trace_table_has_token_columns(tmp_path):
+    tracer = setup_temp_db(tmp_path)
+    dummy = create_dummy()
+    dummy("hola")
+    conn = sqlite3.connect(settings.trace_db_path)
+    cols = [r[1] for r in conn.execute("PRAGMA table_info(llm_traces)").fetchall()]
+    conn.close()
+    assert "prompt_tokens" in cols
+    assert "completion_tokens" in cols
 
 
 def test_pipeline_tracing_hierarchy(tmp_path):

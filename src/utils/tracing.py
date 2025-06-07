@@ -100,24 +100,46 @@ class LLMTracer:
         self._init_db()
 
     def _init_db(self) -> None:
+        """Create or migrate the llm_traces table."""
         with sqlite3.connect(self.db_path) as conn:
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS llm_traces (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    timestamp TEXT,
-                    model TEXT,
-                    temperature REAL,
-                    prompt TEXT,
-                    tokens_input INTEGER,
-                    tokens_output INTEGER,
-                    latency_ms REAL,
-                    cost_usd REAL,
-                    status TEXT,
-                    error TEXT
+            columns = [row[1] for row in conn.execute("PRAGMA table_info(llm_traces)")]
+            if not columns:
+                conn.execute(
+                    """
+                    CREATE TABLE llm_traces (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        timestamp TEXT,
+                        model TEXT,
+                        temperature REAL,
+                        prompt TEXT,
+                        prompt_tokens INTEGER,
+                        completion_tokens INTEGER,
+                        latency_ms REAL,
+                        cost_usd REAL,
+                        status TEXT,
+                        error TEXT
+                    )
+                    """
                 )
-                """
-            )
+            else:
+                if "prompt_tokens" not in columns:
+                    if "tokens_input" in columns:
+                        conn.execute(
+                            "ALTER TABLE llm_traces RENAME COLUMN tokens_input TO prompt_tokens"
+                        )
+                    else:
+                        conn.execute(
+                            "ALTER TABLE llm_traces ADD COLUMN prompt_tokens INTEGER"
+                        )
+                if "completion_tokens" not in columns:
+                    if "tokens_output" in columns:
+                        conn.execute(
+                            "ALTER TABLE llm_traces RENAME COLUMN tokens_output TO completion_tokens"
+                        )
+                    else:
+                        conn.execute(
+                            "ALTER TABLE llm_traces ADD COLUMN completion_tokens INTEGER"
+                        )
             conn.commit()
 
     def log_trace(self, data: Dict[str, Any]) -> None:
@@ -126,7 +148,7 @@ class LLMTracer:
                 """
                 INSERT INTO llm_traces (
                     timestamp, model, temperature, prompt,
-                    tokens_input, tokens_output, latency_ms,
+                    prompt_tokens, completion_tokens, latency_ms,
                     cost_usd, status, error
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
@@ -135,8 +157,8 @@ class LLMTracer:
                     data.get("model"),
                     data.get("temperature"),
                     data.get("prompt"),
-                    data.get("tokens_input"),
-                    data.get("tokens_output"),
+                    data.get("prompt_tokens") or data.get("tokens_input"),
+                    data.get("completion_tokens") or data.get("tokens_output"),
                     data.get("latency_ms"),
                     data.get("cost_usd"),
                     data.get("status"),
@@ -185,27 +207,33 @@ def trace_llm(func: Callable) -> Callable:
                     if isinstance(result.get("usage"), dict)
                     else {}
                 )
-                tokens_input = (
-                    result.get("tokens_input")
+                prompt_tokens = (
+                    result.get("prompt_tokens")
+                    or result.get("tokens_input")
                     or usage.get("prompt_tokens")
                     or usage.get("input_tokens")
                 )
-                tokens_output = (
-                    result.get("tokens_output")
+                completion_tokens = (
+                    result.get("completion_tokens")
+                    or result.get("tokens_output")
                     or usage.get("completion_tokens")
                     or usage.get("output_tokens")
                 )
             else:
-                tokens_input = kwargs.get("tokens_input")
-                tokens_output = kwargs.get("tokens_output")
-            if tokens_input is None:
-                tokens_input = kwargs.get("tokens_input")
-            if tokens_output is None:
-                tokens_output = kwargs.get("tokens_output")
+                prompt_tokens = kwargs.get("prompt_tokens") or kwargs.get(
+                    "tokens_input"
+                )
+                completion_tokens = kwargs.get("completion_tokens") or kwargs.get(
+                    "tokens_output"
+                )
+            if prompt_tokens is None:
+                prompt_tokens = kwargs.get("tokens_input")
+            if completion_tokens is None:
+                completion_tokens = kwargs.get("tokens_output")
             cost_usd = None
-            if tokens_input is not None or tokens_output is not None:
-                ti = tokens_input or 0
-                to = tokens_output or 0
+            if prompt_tokens is not None or completion_tokens is not None:
+                ti = prompt_tokens or 0
+                to = completion_tokens or 0
                 price = settings.model_prices.get(model)
                 if price is not None:
                     cost_usd = (ti + to) / 1000 * price
@@ -215,8 +243,8 @@ def trace_llm(func: Callable) -> Callable:
                     "model": model,
                     "temperature": temperature,
                     "prompt": prompt,
-                    "tokens_input": tokens_input,
-                    "tokens_output": tokens_output,
+                    "prompt_tokens": prompt_tokens,
+                    "completion_tokens": completion_tokens,
                     "latency_ms": latency_ms,
                     "cost_usd": cost_usd,
                     "status": status,
