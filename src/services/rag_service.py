@@ -4,6 +4,7 @@ from src.chains.rag_chain import RAGChain  # ← Importación corregida
 from src.storage.vector_store import VectorStoreManager
 from src.utils.logger import setup_logger
 from src.utils.exceptions import RAGException
+from src.utils.faq_manager import FAQManager
 
 logger = setup_logger()
 
@@ -13,6 +14,7 @@ class RAGService:
     def __init__(self):
         self.vector_store_manager = VectorStoreManager()
         self.rag_chain = RAGChain()
+        self.faq_manager = FAQManager()
         self._initialized = False
     
     def initialize(self, force_reindex: bool = False) -> bool:
@@ -68,6 +70,9 @@ class RAGService:
         
         try:
             result = self.rag_chain.invoke(question)
+
+            # Registrar la pregunta para generar FAQs dinámicas
+            self.faq_manager.log_question(question)
             
             response = {
                 'answer': result.get('answer', 'No se pudo generar una respuesta.'),
@@ -105,6 +110,10 @@ class RAGService:
             logger.info(f"Response generated with {model_name} (complexity: {complexity:.2f})")
         
         return answer
+
+    def get_frequent_questions(self, top_n: int = 5) -> List[str]:
+        """Devuelve las preguntas más frecuentes registradas."""
+        return self.faq_manager.get_top_questions(top_n)
     
     def reindex_documents(self) -> int:
         """Reindexar documentos - SOLO usar si es necesario"""

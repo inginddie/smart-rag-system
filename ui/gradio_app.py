@@ -63,6 +63,14 @@ class GradioRAGApp:
         except Exception as e:
             logger.error(f"Error reindexing: {e}")
             return f"❌ Error al reindexar: {str(e)}"
+
+    def get_faq_markdown(self) -> str:
+        """Genera el texto Markdown de las preguntas frecuentes."""
+        faqs = self.rag_service.get_frequent_questions()
+        if not faqs:
+            return "_No hay preguntas frecuentes registradas aún._"
+        lines = "\n".join(f"- {q}" for q in faqs)
+        return f"**Preguntas frecuentes:**\n{lines}"
     
     def create_interface(self) -> gr.Blocks:
         """Crea la interfaz de Gradio actualizada"""
@@ -115,10 +123,12 @@ class GradioRAGApp:
                         ],
                         inputs=msg
                     )
+
+                    faq_display = gr.Markdown(value=self.get_faq_markdown())
                     
                     def respond(message, chat_history):
                         if not message.strip():
-                            return chat_history, ""
+                            return chat_history, "", self.get_faq_markdown()
                         
                         # Obtener respuesta del RAG
                         bot_response = self.chat_response(message, chat_history)
@@ -126,25 +136,25 @@ class GradioRAGApp:
                         # Agregar al historial en formato correcto para Gradio
                         chat_history.append({"role": "user", "content": message})
                         chat_history.append({"role": "assistant", "content": bot_response})
-                        
-                        return chat_history, ""
+
+                        return chat_history, "", self.get_faq_markdown()
                     
                     # Event handlers para el chat
                     send_btn.click(
                         respond,
                         inputs=[msg, chatbot],
-                        outputs=[chatbot, msg]
+                        outputs=[chatbot, msg, faq_display]
                     )
                     
                     msg.submit(
                         respond,
                         inputs=[msg, chatbot],
-                        outputs=[chatbot, msg]
+                        outputs=[chatbot, msg, faq_display]
                     )
                     
                     clear_btn.click(
-                        lambda: ([], ""),
-                        outputs=[chatbot, msg]
+                        lambda: ([], "", self.get_faq_markdown()),
+                        outputs=[chatbot, msg, faq_display]
                     )
                 
                 # Tab de administración
