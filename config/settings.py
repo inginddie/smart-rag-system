@@ -74,6 +74,7 @@ class Settings(BaseSettings):
     metrics_port: int = Field(default=8000, env="METRICS_PORT")
     ingest_sla_ms: int = Field(default=1000, env="INGEST_SLA_MS")
     embed_sla_ms: int = Field(default=1000, env="EMBED_SLA_MS")
+    chunk_sla_ms: int = Field(default=1000, env="CHUNK_SLA_MS")
     search_sla_ms: int = Field(default=1000, env="SEARCH_SLA_MS")
     synthesize_sla_ms: int = Field(default=2000, env="SYNTHESIZE_SLA_MS")
 
