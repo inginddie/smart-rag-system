@@ -27,15 +27,17 @@ class TestRAGService:
         # Configurar paths temporales
         os.environ["DOCUMENTS_PATH"] = temp_dir
         os.environ["VECTOR_DB_PATH"] = str(Path(temp_dir) / "vector_db")
+        os.environ["OPENAI_API_KEY"] = "test-key"
         
         rag_service = RAGService()
         result = rag_service.initialize()
-        
-        # Debería fallar o advertir sobre falta de documentos
-        assert result is False or result is True  # Dependiendo de la implementación
+
+        # La inicialización debería fallar debido a la falta de documentos
+        assert result is False
     
     def test_query_without_initialization(self):
         """Test de consulta sin inicialización"""
+        os.environ["OPENAI_API_KEY"] = "test-key"
         rag_service = RAGService()
         
         with pytest.raises(RAGException):
