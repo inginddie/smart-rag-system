@@ -129,7 +129,7 @@ SHARE_GRADIO=true
 
 ### No encuentra documentos
 - Coloca archivos en `data/documents/`
-- Formatos soportados: PDF, TXT, DOCX
+- Formatos soportados: PDF, TXT, DOCX, XLS/XLSX
 
 ### Error de inicialización
 - Revisa logs en `logs/app.log`
