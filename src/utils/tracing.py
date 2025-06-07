@@ -10,6 +10,7 @@ from typing import Any, Callable, Dict, Optional
 
 from config.settings import settings
 from src.utils.exceptions import TracingException
+from src.utils.metrics import record_latency
 
 TRACE_QUEUE: "queue.Queue" = queue.Queue()
 _current_tracer: "contextvars.ContextVar[Optional['Tracer']]" = contextvars.ContextVar(
@@ -29,11 +30,14 @@ class Span:
         self.end_time: Optional[float] = None
         self.status: Optional[str] = None
         self.error: Optional[str] = None
+        self.duration_ms: Optional[float] = None
 
     def finish(self, status: str, error: Optional[str] = None) -> None:
         self.end_time = time.perf_counter()
         self.status = status
         self.error = error
+        if self.end_time is not None:
+            self.duration_ms = (self.end_time - self.start_time) * 1000
 
 
 class Tracer:
@@ -150,7 +154,7 @@ def trace_llm(func: Callable) -> Callable:
         tracer_db = LLMTracer()
         start = time.perf_counter()
         ctx = get_current_tracer()
-        span = ctx.start_span(func.__name__) if ctx else None
+        span = ctx.start_span("synthesize") if ctx else None
         try:
             result = func(*args, **kwargs)
             status = "success"
@@ -217,6 +221,7 @@ def trace_llm(func: Callable) -> Callable:
                     "error": error,
                 }
             )
+            record_latency("synthesize", latency_ms, settings.synthesize_sla_ms)
             if ctx and span:
                 ctx.end_span(span, status, error)
         return result
