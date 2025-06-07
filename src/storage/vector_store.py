@@ -16,6 +16,9 @@ from src.models.embeddings import EmbeddingManager
 from src.storage.document_processor import DocumentProcessor
 from src.utils.logger import setup_logger
 from src.utils.exceptions import VectorStoreException
+from src.utils.metrics import record_latency
+from src.utils.tracing import get_current_tracer
+import time
 
 logger = setup_logger()
 
@@ -140,7 +143,11 @@ class VectorStoreManager:
         if not documents:
             logger.warning("No documents to add")
             return []
-        
+
+        tracer = get_current_tracer()
+        span = tracer.start_span("embed") if tracer else None
+        start = time.perf_counter()
+
         try:
             # Asegurar que el vector store está inicializado
             vs = self.vector_store
@@ -192,10 +199,15 @@ class VectorStoreManager:
                 logger.warning("No documents were successfully added")
             
             return all_ids
-            
+
         except Exception as e:
             logger.error(f"Error adding documents: {e}")
             raise VectorStoreException(f"Failed to add documents: {e}")
+        finally:
+            duration = (time.perf_counter() - start) * 1000
+            record_latency("embed", duration, settings.embed_sla_ms)
+            if tracer and span:
+                tracer.end_span(span, "success")
 
     def index_postgres_query(self, conn_str: str, query: str) -> int:
         """Carga datos desde PostgreSQL e indexa en la base vectorial"""
@@ -216,6 +228,9 @@ class VectorStoreManager:
     
     def load_and_index_documents(self, documents_path: Optional[str] = None) -> int:
         """Carga e indexa documentos desde un directorio"""
+        tracer = get_current_tracer()
+        span = tracer.start_span("ingest") if tracer else None
+        start = time.perf_counter()
         try:
             logger.info("Starting document loading and indexing...")
             
@@ -254,9 +269,17 @@ class VectorStoreManager:
         except Exception as e:
             logger.error(f"Error loading and indexing documents: {e}")
             raise VectorStoreException(f"Failed to load and index documents: {e}")
+        finally:
+            duration = (time.perf_counter() - start) * 1000
+            record_latency("ingest", duration, settings.ingest_sla_ms)
+            if tracer and span:
+                tracer.end_span(span, "success")
     
     def similarity_search(self, query: str, k: int = 5):
         """Búsqueda por similitud"""
+        tracer = get_current_tracer()
+        span = tracer.start_span("search") if tracer else None
+        start = time.perf_counter()
         try:
             vs = self.vector_store
             
@@ -272,10 +295,15 @@ class VectorStoreManager:
             results = vs.similarity_search(query, k=k)
             logger.debug(f"Found {len(results)} similar documents for query")
             return results
-            
+
         except Exception as e:
             logger.error(f"Error in similarity search: {e}")
             raise VectorStoreException(f"Similarity search failed: {e}")
+        finally:
+            duration = (time.perf_counter() - start) * 1000
+            record_latency("search", duration, settings.search_sla_ms)
+            if tracer and span:
+                tracer.end_span(span, "success")
     
     def get_retriever(self, search_kwargs: Optional[dict] = None):
         """Obtiene un retriever configurado"""

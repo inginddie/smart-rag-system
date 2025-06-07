@@ -5,6 +5,7 @@ from src.storage.vector_store import VectorStoreManager
 from src.utils.logger import setup_logger
 from src.utils.exceptions import RAGException
 from src.utils.faq_manager import FAQManager
+from src.utils.metrics import start_metrics_server
 
 logger = setup_logger()
 
@@ -39,6 +40,7 @@ class RAGService:
             self.rag_chain.create_chain()
             self._initialized = True
             logger.info("RAG service initialized successfully with smart model selection")
+            start_metrics_server()
             return True
             
         except Exception as e:

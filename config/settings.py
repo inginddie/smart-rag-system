@@ -65,6 +65,13 @@ class Settings(BaseSettings):
     share_gradio: bool = Field(default=False, env="SHARE_GRADIO")
     server_port: int = Field(default=7860, env="SERVER_PORT")
 
+    # Observability & SLA
+    metrics_port: int = Field(default=8000, env="METRICS_PORT")
+    ingest_sla_ms: int = Field(default=1000, env="INGEST_SLA_MS")
+    embed_sla_ms: int = Field(default=1000, env="EMBED_SLA_MS")
+    search_sla_ms: int = Field(default=1000, env="SEARCH_SLA_MS")
+    synthesize_sla_ms: int = Field(default=2000, env="SYNTHESIZE_SLA_MS")
+
     class Config:
         env_file = ".env"
         case_sensitive = False
