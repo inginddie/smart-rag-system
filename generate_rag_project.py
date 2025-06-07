@@ -7,37 +7,18 @@ Ejecutar: python generate_rag_project.py
 import os
 from pathlib import Path
 from typing import Dict
+from src.utils.project_setup import (
+    create_project_structure,
+    write_files,
+    DEFAULT_DIRECTORIES,
+)
 
-def create_directory_structure():
-    """Crea la estructura de directorios del proyecto"""
-    directories = [
-        "config",
-        "src/models",
-        "src/storage", 
-        "src/chains",
-        "src/services",
-        "src/utils",
-        "ui",
-        "data/documents",
-        "data/vector_db",
-        "tests",
-        "logs"
-    ]
-    
+def create_directory_structure() -> None:
+    """Utiliza utilidades compartidas para crear la estructura."""
     print("📁 Creando estructura de directorios...")
-    for directory in directories:
-        Path(directory).mkdir(parents=True, exist_ok=True)
+    create_project_structure()
+    for directory in DEFAULT_DIRECTORIES:
         print(f"  ✅ {directory}")
-    
-    # Crear archivos __init__.py
-    init_directories = [
-        "config", "src", "src/models", "src/storage", 
-        "src/chains", "src/services", "src/utils", "ui", "tests"
-    ]
-    
-    for directory in init_directories:
-        init_file = Path(directory) / "__init__.py"
-        init_file.write_text("# -*- coding: utf-8 -*-\n")
 
 def create_file_content() -> Dict[str, str]:
     """Define el contenido de todos los archivos del proyecto"""
@@ -1204,17 +1185,10 @@ MIT License - ver LICENSE para detalles.
 def create_all_files():
     """Crea todos los archivos del proyecto"""
     files_content = create_file_content()
-    
+
     print("📝 Creando archivos del proyecto...")
-    
-    for file_path, content in files_content.items():
-        # Crear directorio padre si no existe
-        Path(file_path).parent.mkdir(parents=True, exist_ok=True)
-        
-        # Escribir contenido
-        with open(file_path, 'w', encoding='utf-8') as f:
-            f.write(content)
-        
+    write_files(files_content)
+    for file_path in files_content:
         print(f"  ✅ {file_path}")
 
 def main():
