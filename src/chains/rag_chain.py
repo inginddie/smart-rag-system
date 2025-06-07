@@ -14,6 +14,7 @@ from config.settings import settings
 from src.storage.vector_store import VectorStoreManager
 from src.utils.logger import setup_logger
 from src.utils.exceptions import ChainException
+from src.utils.tracing import trace_llm
 
 logger = setup_logger()
 
@@ -148,6 +149,7 @@ Responde con rigor académico, precisión científica y enfoque específico en l
             logger.error(f"Error creating RAG chain: {e}")
             raise ChainException(f"Failed to create RAG chain: {e}")
     
+    @trace_llm
     def invoke(self, query: str) -> Dict[str, Any]:
         """Ejecuta la cadena RAG con selección inteligente de modelo"""
         try:

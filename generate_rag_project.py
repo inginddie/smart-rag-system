@@ -7,6 +7,8 @@ Ejecutar: python generate_rag_project.py
 import os
 from pathlib import Path
 from typing import Dict
+from pydantic_settings import BaseSettings  # Cambiado
+from pydantic import Field
 from src.utils.project_setup import (
     create_project_structure,
     write_files,
