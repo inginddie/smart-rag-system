@@ -144,8 +144,12 @@ class RAGService:
                 'collection_status': collection_info.get('status', 'unknown'),
                 'document_count': collection_info.get('document_count', 0),
                 'persist_directory': collection_info.get('persist_directory', 'unknown'),
-                # Import settings here to avoid NameError
-                'smart_selection_enabled': getattr(__import__('src.config.settings', fromlist=['settings']), 'enable_smart_selection', False)
+                # Import settings lazily to avoid circular dependencies
+                'smart_selection_enabled': getattr(
+                    __import__('config.settings', fromlist=['settings']),
+                    'enable_smart_selection',
+                    False,
+                )
             }
         except Exception as e:
             return {
