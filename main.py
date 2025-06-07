@@ -6,6 +6,7 @@ import argparse
 from src.utils.logger import setup_logger
 from ui.gradio_app import GradioRAGApp
 from src.services.rag_service import RAGService
+from config.settings import settings
 
 # Configurar logging
 logger = setup_logger()
@@ -51,7 +52,14 @@ def main():
     parser.add_argument("--query", type=str, help="Consulta para modo CLI")
     
     args = parser.parse_args()
-    
+
+    # Verificar API key de OpenAI excepto en modo setup
+    if args.mode != "setup" and not settings.openai_api_key:
+        logger.error(
+            "OpenAI API key missing. Set OPENAI_API_KEY in your environment or .env file."
+        )
+        sys.exit(1)
+
     try:
         if args.mode == "setup":
             logger.info("Setting up project structure...")
