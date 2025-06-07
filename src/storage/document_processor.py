@@ -2,13 +2,32 @@
 import os
 from typing import List, Optional
 from pathlib import Path
-from langchain_community.document_loaders import (
-    TextLoader, 
-    PyPDFLoader, 
-    Docx2txtLoader,
-)
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.schema import Document
+try:
+    from langchain_community.document_loaders import (
+        TextLoader,
+        PyPDFLoader,
+        Docx2txtLoader,
+    )
+    from langchain.text_splitter import RecursiveCharacterTextSplitter
+    from langchain.schema import Document
+except ImportError:  # pragma: no cover - optional dependency
+    TextLoader = PyPDFLoader = Docx2txtLoader = None  # type: ignore
+    RecursiveCharacterTextSplitter = None  # type: ignore
+    from dataclasses import dataclass
+
+    @dataclass
+    class Document:
+        page_content: str
+        metadata: dict
+
+    class TextLoader:
+        def __init__(self, path: str):
+            self.path = path
+
+        def load(self):
+            with open(self.path, "r", encoding="utf-8") as f:
+                content = f.read()
+            return [Document(page_content=content, metadata={})]
 from config.settings import settings
 from src.utils.logger import setup_logger
 from src.utils.exceptions import DocumentProcessingException
@@ -19,12 +38,24 @@ class DocumentProcessor:
     """Procesador de documentos con múltiples formatos"""
     
     def __init__(self):
-        self.text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=settings.chunk_size,
-            chunk_overlap=settings.chunk_overlap,
-            length_function=len,
-            separators=["\n\n", "\n", ". ", " ", ""]
-        )
+        if RecursiveCharacterTextSplitter is None:
+            class _SimpleSplitter:
+                def split_documents(self, docs):
+                    chunks = []
+                    for doc in docs:
+                        text = doc.page_content
+                        for part in text.split("\n\n"):
+                            chunks.append(Document(page_content=part, metadata=doc.metadata))
+                    return chunks
+
+            self.text_splitter = _SimpleSplitter()
+        else:
+            self.text_splitter = RecursiveCharacterTextSplitter(
+                chunk_size=settings.chunk_size,
+                chunk_overlap=settings.chunk_overlap,
+                length_function=len,
+                separators=["\n\n", "\n", ". ", " ", ""],
+            )
         
         # Mapeo de extensiones a loaders
         self.loader_mapping = {
@@ -33,15 +64,19 @@ class DocumentProcessor:
             '.docx': Docx2txtLoader,
         }
     
-    def _safe_load_file(self, file_path: Path, loader_class) -> List[Document]:
+    def _safe_load_file(self, file_path: Path, loader_class):
         """Carga segura de archivos con manejo de errores"""
         try:
             logger.info(f"Loading file: {file_path.name} ({file_path.stat().st_size / 1024 / 1024:.1f} MB)")
-            
+
             # Para PDFs grandes, usar configuración especial
             if file_path.suffix.lower() == '.pdf' and file_path.stat().st_size > 10 * 1024 * 1024:  # > 10MB
                 logger.warning(f"Large PDF detected: {file_path.name}. Processing with special handling...")
-                
+
+            if loader_class is None:
+                logger.error(f"No loader available for {file_path.suffix}")
+                return []
+
             loader = loader_class(str(file_path))
             docs = loader.load()
             
@@ -56,7 +91,7 @@ class DocumentProcessor:
             logger.error(f"Error loading {file_path}: {str(e)[:200]}...")
             return []
     
-    def load_documents(self, path: Optional[str] = None) -> List[Document]:
+    def load_documents(self, path: Optional[str] = None):
         """Carga documentos desde un directorio"""
         documents_path = Path(path or settings.documents_path)
         
@@ -110,7 +145,7 @@ class DocumentProcessor:
             logger.error(f"Error loading documents: {e}")
             raise DocumentProcessingException(f"Failed to load documents: {e}")
     
-    def split_documents(self, documents: List[Document]) -> List[Document]:
+    def split_documents(self, documents):
         """Divide documentos en chunks"""
         try:
             if not documents:
@@ -147,7 +182,7 @@ class DocumentProcessor:
             logger.error(f"Error splitting documents: {e}")
             raise DocumentProcessingException(f"Failed to split documents: {e}")
     
-    def process_documents(self, path: Optional[str] = None) -> List[Document]:
+    def process_documents(self, path: Optional[str] = None):
         """Pipeline completo de procesamiento"""
         try:
             logger.info("Starting document processing pipeline...")

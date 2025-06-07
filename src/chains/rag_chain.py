@@ -1,9 +1,15 @@
 # -*- coding: utf-8 -*-
 from typing import Dict, Any, Optional
-from langchain_openai import ChatOpenAI
-from langchain.chains import create_retrieval_chain
-from langchain.chains.combine_documents import create_stuff_documents_chain
-from langchain_core.prompts import ChatPromptTemplate
+try:
+    from langchain_openai import ChatOpenAI
+    from langchain.chains import create_retrieval_chain
+    from langchain.chains.combine_documents import create_stuff_documents_chain
+    from langchain_core.prompts import ChatPromptTemplate
+except ImportError:  # pragma: no cover - optional dependency
+    ChatOpenAI = None  # type: ignore
+    create_retrieval_chain = None  # type: ignore
+    create_stuff_documents_chain = None  # type: ignore
+    ChatPromptTemplate = None  # type: ignore
 from config.settings import settings
 from src.storage.vector_store import VectorStoreManager
 from src.utils.logger import setup_logger
@@ -83,14 +89,19 @@ CONTEXTO ACADÉMICO:
 
 Responde con rigor académico, precisión científica y enfoque específico en la aplicabilidad para investigación de tesis sobre IA en historias de usuario."""
     
-    def _get_or_create_model(self, model_name: str) -> ChatOpenAI:
+    def _get_or_create_model(self, model_name: str):
         """Obtiene o crea un modelo LLM con cache"""
+        if ChatOpenAI is None:
+            raise ChainException(
+                "ChatOpenAI dependency is required but not installed"
+            )
+
         if model_name not in self._model_cache:
             try:
                 self._model_cache[model_name] = ChatOpenAI(
                     model=model_name,
                     temperature=self.temperature,
-                    openai_api_key=settings.openai_api_key
+                    openai_api_key=settings.openai_api_key,
                 )
                 logger.info(f"Created LLM instance: {model_name}")
             except Exception as e:
@@ -103,6 +114,9 @@ Responde con rigor académico, precisión científica y enfoque específico en l
         """Crea una cadena RAG para un modelo específico"""
         if model_name not in self._chain_cache:
             try:
+                if None in (ChatOpenAI, create_retrieval_chain, create_stuff_documents_chain, ChatPromptTemplate):
+                    raise ChainException("LangChain dependencies are required but not installed")
+
                 llm = self._get_or_create_model(model_name)
                 retriever = self.vector_store_manager.get_retriever()
                 
