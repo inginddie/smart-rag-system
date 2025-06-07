@@ -93,7 +93,7 @@ isort src/ ui/ tests/
 ```
 
 ### Base de datos de trazas
-Cada llamada al LLM se registra en `data/traces.db`. Puedes cambiar la ruta con la variable `TRACE_DB_PATH`.
+Cada llamada al LLM se registra en `data/traces.db`. Puedes cambiar la ruta con la variable `TRACE_DB_PATH`. El costo se calcula usando los precios definidos en `model_prices`.
 
 Para consultar los registros:
 ```bash
@@ -110,6 +110,9 @@ SIMPLE_MODEL=gpt-4o-mini
 COMPLEX_MODEL=gpt-4o
 DEFAULT_MODEL=gpt-4o-mini
 EMBEDDING_MODEL=text-embedding-3-large
+
+# Precios por modelo (opcional)
+MODEL_PRICES={"gpt-4o":0.02,"gpt-4o-mini":0.01}
 
 # RAG
 CHUNK_SIZE=1500

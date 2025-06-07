@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import os
 from pathlib import Path
-from typing import Optional
+from typing import Dict, Optional
 
 from pydantic import Field
 
@@ -32,6 +32,11 @@ class Settings(BaseSettings):
     simple_model: str = Field(default="gpt-4o-mini", env="SIMPLE_MODEL")
     complex_model: str = Field(default="gpt-4o", env="COMPLEX_MODEL")
     default_model: str = Field(default="gpt-4o-mini", env="DEFAULT_MODEL")
+
+    # Precios por cada 1000 tokens de los modelos
+    model_prices: Dict[str, float] = Field(
+        default={"gpt-4o": 0.02, "gpt-4o-mini": 0.01}
+    )
 
     # COMPATIBILIDAD: mantener model_name para código legacy
     @property
