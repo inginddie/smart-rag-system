@@ -64,6 +64,19 @@ def test_pipeline_tracing_hierarchy(tmp_path):
     root_span = next(s for s in spans if s["parent_span_id"] is None)
     child_span = next(s for s in spans if s["parent_span_id"] == root_span["span_id"])
     assert child_span["trace_id"] == root_span["trace_id"]
+    assert "duration_ms" in child_span
+
+
+def test_span_records_duration(tmp_path):
+    setup_temp_db(tmp_path)
+    while not TRACE_QUEUE.empty():
+        TRACE_QUEUE.get()
+    with Tracer():
+        dummy = create_dummy()
+        dummy("hola")
+    trace = TRACE_QUEUE.get_nowait()
+    span = trace["spans"][0]
+    assert span.get("duration_ms") is not None
 
 
 def test_pipeline_outside_context_error():
