@@ -1,42 +1,15 @@
 # -*- coding: utf-8 -*-
 import os
 import sys
-from pathlib import Path
 import argparse
 from src.utils.logger import setup_logger
+from src.utils.project_setup import create_project_structure
 from ui.gradio_app import GradioRAGApp
 from src.services.rag_service import RAGService
 from config.settings import settings
 
 # Configurar logging
 logger = setup_logger()
-
-def create_project_structure():
-    """Crea la estructura de directorios del proyecto"""
-    directories = [
-        "config",
-        "src/models",
-        "src/storage", 
-        "src/chains",
-        "src/services",
-        "src/utils",
-        "ui",
-        "data/documents",
-        "data/vector_db",
-        "tests",
-        "logs"
-    ]
-    
-    for directory in directories:
-        Path(directory).mkdir(parents=True, exist_ok=True)
-        
-        # Crear archivos __init__.py
-        if not directory.startswith("data") and not directory.startswith("logs"):
-            init_file = Path(directory) / "__init__.py"
-            if not init_file.exists():
-                init_file.touch()
-    
-    logger.info("Project structure created successfully")
 
 def main():
     """Función principal"""

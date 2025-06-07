@@ -20,6 +20,9 @@ Un sistema completo de Retrieval-Augmented Generation (RAG) construido con Pytho
 ```bash
 python generate_rag_project.py
 ```
+Las funciones reutilizables para crear directorios y archivos se
+encuentran en `src/utils/project_setup.py` por si deseas utilizarlas
+desde tu propio código.
 
 ### 2. Crear entorno virtual
 ```bash
