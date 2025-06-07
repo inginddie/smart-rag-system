@@ -94,7 +94,9 @@ Personaliza la configuración en `.env`:
 
 ```env
 # Modelos
-MODEL_NAME=gpt-4
+SIMPLE_MODEL=gpt-4o-mini
+COMPLEX_MODEL=gpt-4o
+DEFAULT_MODEL=gpt-4o-mini
 EMBEDDING_MODEL=text-embedding-3-large
 
 # RAG
