@@ -196,6 +196,23 @@ class VectorStoreManager:
         except Exception as e:
             logger.error(f"Error adding documents: {e}")
             raise VectorStoreException(f"Failed to add documents: {e}")
+
+    def index_postgres_query(self, conn_str: str, query: str) -> int:
+        """Carga datos desde PostgreSQL e indexa en la base vectorial"""
+        try:
+            docs = self.document_processor.load_from_postgres(conn_str, query)
+            if not docs:
+                logger.warning("No data retrieved from PostgreSQL")
+                return 0
+            chunks = self.document_processor.split_documents(docs)
+            if not chunks:
+                logger.warning("No chunks created from PostgreSQL data")
+                return 0
+            ids = self.add_documents(chunks)
+            return len(ids)
+        except Exception as e:
+            logger.error(f"Error indexing PostgreSQL data: {e}")
+            raise VectorStoreException(f"Failed to index PostgreSQL data: {e}")
     
     def load_and_index_documents(self, documents_path: Optional[str] = None) -> int:
         """Carga e indexa documentos desde un directorio"""
