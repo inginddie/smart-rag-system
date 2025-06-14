@@ -6,7 +6,7 @@ import time
 import uuid
 from datetime import datetime
 from functools import wraps
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional, Sequence
 
 from config.settings import settings
 from src.utils.exceptions import TracingException
@@ -31,6 +31,7 @@ class Span:
         self.status: Optional[str] = None
         self.error: Optional[str] = None
         self.duration_ms: Optional[float] = None
+        self.docs_count: Optional[int] = None
 
     def finish(self, status: str, error: Optional[str] = None) -> None:
         self.end_time = time.perf_counter()
@@ -255,5 +256,35 @@ def trace_llm(func: Callable) -> Callable:
             if ctx and span:
                 ctx.end_span(span, status, error)
         return result
+
+    return wrapper
+
+
+def trace_retrieval(func: Callable) -> Callable:
+    """Decorator to trace retrieval operations."""
+
+    @wraps(func)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        ctx = get_current_tracer()
+        span = ctx.start_span("retrieve") if ctx else None
+        start = time.perf_counter()
+        docs_count = 0
+        status = "success"
+        error: Optional[str] = None
+        try:
+            result = func(*args, **kwargs)
+            if isinstance(result, Sequence):
+                docs_count = len(result)
+            return result
+        except Exception as exc:
+            status = "error"
+            error = str(exc)
+            raise
+        finally:
+            latency_ms = (time.perf_counter() - start) * 1000
+            record_latency("search", latency_ms, settings.search_sla_ms)
+            if ctx and span:
+                span.docs_count = docs_count if status == "success" else 0
+                ctx.end_span(span, status, error)
 
     return wrapper

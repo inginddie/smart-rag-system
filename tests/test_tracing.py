@@ -12,6 +12,8 @@ from src.utils.tracing import (
     requires_tracer,
     trace_llm,
 )
+from src.storage.vector_store import VectorStoreManager
+from src.utils.exceptions import VectorStoreException
 
 
 def setup_temp_db(tmp_path):
@@ -99,3 +101,59 @@ def test_span_records_duration(tmp_path):
 def test_pipeline_outside_context_error():
     with pytest.raises(TracingException):
         pipeline()
+
+
+class FakeCollection:
+    def count(self):
+        return 2
+
+
+class FakeVectorStore:
+    def __init__(self, fail: bool = False):
+        self.fail = fail
+        self._collection = FakeCollection()
+
+    def similarity_search(self, query: str, k: int = 5):
+        if self.fail:
+            raise RuntimeError("fail")
+        return ["doc1", "doc2"]
+
+
+def clear_queue():
+    while not TRACE_QUEUE.empty():
+        TRACE_QUEUE.get()
+
+
+def test_trace_retrieval_success(monkeypatch):
+    manager = VectorStoreManager()
+    monkeypatch.setattr(
+        VectorStoreManager,
+        "vector_store",
+        property(lambda self: FakeVectorStore()),
+    )
+    clear_queue()
+    with Tracer():
+        manager.similarity_search("hola")
+    trace = TRACE_QUEUE.get_nowait()
+    span = trace["spans"][0]
+    assert span["status"] == "success"
+    assert span.get("duration_ms") is not None
+    assert span.get("docs_count", 0) > 0
+
+
+def test_trace_retrieval_error(monkeypatch):
+    manager = VectorStoreManager()
+    monkeypatch.setattr(
+        VectorStoreManager,
+        "vector_store",
+        property(lambda self: FakeVectorStore(fail=True)),
+    )
+    clear_queue()
+    with Tracer():
+        with pytest.raises(VectorStoreException):
+            manager.similarity_search("boom")
+    trace = TRACE_QUEUE.get_nowait()
+    span = trace["spans"][0]
+    assert span["status"] == "error"
+    assert span.get("docs_count") == 0
+    assert span.get("error")
