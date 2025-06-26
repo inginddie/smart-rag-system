@@ -17,7 +17,7 @@ from src.storage.document_processor import DocumentProcessor
 from src.utils.logger import setup_logger
 from src.utils.exceptions import VectorStoreException
 from src.utils.metrics import record_latency
-from src.utils.tracing import get_current_tracer
+from src.utils.tracing import get_current_tracer, trace_retrieval
 import time
 
 logger = setup_logger()
@@ -275,23 +275,21 @@ class VectorStoreManager:
             if tracer and span:
                 tracer.end_span(span, "success")
     
+    @trace_retrieval
     def similarity_search(self, query: str, k: int = 5):
         """Búsqueda por similitud"""
-        tracer = get_current_tracer()
-        span = tracer.start_span("search") if tracer else None
-        start = time.perf_counter()
         try:
             vs = self.vector_store
-            
+
             # Verificar que hay documentos en la colección
             try:
                 count = vs._collection.count()
                 if count == 0:
                     logger.warning("No documents in collection for similarity search")
                     return []
-            except:
+            except Exception:
                 pass
-            
+
             results = vs.similarity_search(query, k=k)
             logger.debug(f"Found {len(results)} similar documents for query")
             return results
@@ -299,11 +297,6 @@ class VectorStoreManager:
         except Exception as e:
             logger.error(f"Error in similarity search: {e}")
             raise VectorStoreException(f"Similarity search failed: {e}")
-        finally:
-            duration = (time.perf_counter() - start) * 1000
-            record_latency("search", duration, settings.search_sla_ms)
-            if tracer and span:
-                tracer.end_span(span, "success")
     
     def get_retriever(self, search_kwargs: Optional[dict] = None):
         """Obtiene un retriever configurado"""
