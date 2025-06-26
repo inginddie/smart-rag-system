@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import os
 from pathlib import Path
-from typing import Optional
+from typing import Dict, Optional
 
 from pydantic import Field
 
@@ -32,6 +32,11 @@ class Settings(BaseSettings):
     simple_model: str = Field(default="gpt-4o-mini", env="SIMPLE_MODEL")
     complex_model: str = Field(default="gpt-4o", env="COMPLEX_MODEL")
     default_model: str = Field(default="gpt-4o-mini", env="DEFAULT_MODEL")
+
+    # Precios por cada 1000 tokens de los modelos
+    model_prices: Dict[str, float] = Field(
+        default={"gpt-4o": 0.02, "gpt-4o-mini": 0.01}
+    )
 
     # COMPATIBILIDAD: mantener model_name para código legacy
     @property
@@ -69,6 +74,7 @@ class Settings(BaseSettings):
     metrics_port: int = Field(default=8000, env="METRICS_PORT")
     ingest_sla_ms: int = Field(default=1000, env="INGEST_SLA_MS")
     embed_sla_ms: int = Field(default=1000, env="EMBED_SLA_MS")
+    chunk_sla_ms: int = Field(default=1000, env="CHUNK_SLA_MS")
     search_sla_ms: int = Field(default=1000, env="SEARCH_SLA_MS")
     synthesize_sla_ms: int = Field(default=2000, env="SYNTHESIZE_SLA_MS")
 

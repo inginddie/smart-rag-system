@@ -6,11 +6,14 @@ import time
 import uuid
 from datetime import datetime
 from functools import wraps
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional, Sequence
 
 from config.settings import settings
 from src.utils.exceptions import TracingException
+from src.utils.logger import setup_logger
 from src.utils.metrics import record_latency
+
+logger = setup_logger()
 
 TRACE_QUEUE: "queue.Queue" = queue.Queue()
 _current_tracer: "contextvars.ContextVar[Optional['Tracer']]" = contextvars.ContextVar(
@@ -31,6 +34,9 @@ class Span:
         self.status: Optional[str] = None
         self.error: Optional[str] = None
         self.duration_ms: Optional[float] = None
+        self.docs_count: Optional[int] = None
+        self.model_name: Optional[str] = None
+        self.selection_reason: Optional[str] = None
 
     def finish(self, status: str, error: Optional[str] = None) -> None:
         self.end_time = time.perf_counter()
@@ -100,24 +106,46 @@ class LLMTracer:
         self._init_db()
 
     def _init_db(self) -> None:
+        """Create or migrate the llm_traces table."""
         with sqlite3.connect(self.db_path) as conn:
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS llm_traces (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    timestamp TEXT,
-                    model TEXT,
-                    temperature REAL,
-                    prompt TEXT,
-                    tokens_input INTEGER,
-                    tokens_output INTEGER,
-                    latency_ms REAL,
-                    cost_usd REAL,
-                    status TEXT,
-                    error TEXT
+            columns = [row[1] for row in conn.execute("PRAGMA table_info(llm_traces)")]
+            if not columns:
+                conn.execute(
+                    """
+                    CREATE TABLE llm_traces (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        timestamp TEXT,
+                        model TEXT,
+                        temperature REAL,
+                        prompt TEXT,
+                        prompt_tokens INTEGER,
+                        completion_tokens INTEGER,
+                        latency_ms REAL,
+                        cost_usd REAL,
+                        status TEXT,
+                        error TEXT
+                    )
+                    """
                 )
-                """
-            )
+            else:
+                if "prompt_tokens" not in columns:
+                    if "tokens_input" in columns:
+                        conn.execute(
+                            "ALTER TABLE llm_traces RENAME COLUMN tokens_input TO prompt_tokens"
+                        )
+                    else:
+                        conn.execute(
+                            "ALTER TABLE llm_traces ADD COLUMN prompt_tokens INTEGER"
+                        )
+                if "completion_tokens" not in columns:
+                    if "tokens_output" in columns:
+                        conn.execute(
+                            "ALTER TABLE llm_traces RENAME COLUMN tokens_output TO completion_tokens"
+                        )
+                    else:
+                        conn.execute(
+                            "ALTER TABLE llm_traces ADD COLUMN completion_tokens INTEGER"
+                        )
             conn.commit()
 
     def log_trace(self, data: Dict[str, Any]) -> None:
@@ -126,7 +154,7 @@ class LLMTracer:
                 """
                 INSERT INTO llm_traces (
                     timestamp, model, temperature, prompt,
-                    tokens_input, tokens_output, latency_ms,
+                    prompt_tokens, completion_tokens, latency_ms,
                     cost_usd, status, error
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
@@ -135,8 +163,8 @@ class LLMTracer:
                     data.get("model"),
                     data.get("temperature"),
                     data.get("prompt"),
-                    data.get("tokens_input"),
-                    data.get("tokens_output"),
+                    data.get("prompt_tokens") or data.get("tokens_input"),
+                    data.get("completion_tokens") or data.get("tokens_output"),
                     data.get("latency_ms"),
                     data.get("cost_usd"),
                     data.get("status"),
@@ -185,36 +213,44 @@ def trace_llm(func: Callable) -> Callable:
                     if isinstance(result.get("usage"), dict)
                     else {}
                 )
-                tokens_input = (
-                    result.get("tokens_input")
+                prompt_tokens = (
+                    result.get("prompt_tokens")
+                    or result.get("tokens_input")
                     or usage.get("prompt_tokens")
                     or usage.get("input_tokens")
                 )
-                tokens_output = (
-                    result.get("tokens_output")
+                completion_tokens = (
+                    result.get("completion_tokens")
+                    or result.get("tokens_output")
                     or usage.get("completion_tokens")
                     or usage.get("output_tokens")
                 )
             else:
-                tokens_input = kwargs.get("tokens_input")
-                tokens_output = kwargs.get("tokens_output")
-            if tokens_input is None:
-                tokens_input = kwargs.get("tokens_input")
-            if tokens_output is None:
-                tokens_output = kwargs.get("tokens_output")
+                prompt_tokens = kwargs.get("prompt_tokens") or kwargs.get(
+                    "tokens_input"
+                )
+                completion_tokens = kwargs.get("completion_tokens") or kwargs.get(
+                    "tokens_output"
+                )
+            if prompt_tokens is None:
+                prompt_tokens = kwargs.get("tokens_input")
+            if completion_tokens is None:
+                completion_tokens = kwargs.get("tokens_output")
             cost_usd = None
-            if tokens_input is not None or tokens_output is not None:
-                ti = tokens_input or 0
-                to = tokens_output or 0
-                cost_usd = (ti + to) / 1000 * 0.002
+            if prompt_tokens is not None or completion_tokens is not None:
+                ti = prompt_tokens or 0
+                to = completion_tokens or 0
+                price = settings.model_prices.get(model)
+                if price is not None:
+                    cost_usd = (ti + to) / 1000 * price
             tracer_db.log_trace(
                 {
                     "timestamp": datetime.utcnow().isoformat(),
                     "model": model,
                     "temperature": temperature,
                     "prompt": prompt,
-                    "tokens_input": tokens_input,
-                    "tokens_output": tokens_output,
+                    "prompt_tokens": prompt_tokens,
+                    "completion_tokens": completion_tokens,
                     "latency_ms": latency_ms,
                     "cost_usd": cost_usd,
                     "status": status,
@@ -225,5 +261,71 @@ def trace_llm(func: Callable) -> Callable:
             if ctx and span:
                 ctx.end_span(span, status, error)
         return result
+
+    return wrapper
+
+
+def trace_retrieval(func: Callable) -> Callable:
+    """Decorator to trace retrieval operations."""
+
+    @wraps(func)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        ctx = get_current_tracer()
+        span = ctx.start_span("retrieve") if ctx else None
+        start = time.perf_counter()
+        docs_count = 0
+        status = "success"
+        error: Optional[str] = None
+        try:
+            result = func(*args, **kwargs)
+            if isinstance(result, Sequence):
+                docs_count = len(result)
+            return result
+        except Exception as exc:
+            status = "error"
+            error = str(exc)
+            raise
+        finally:
+            latency_ms = (time.perf_counter() - start) * 1000
+            record_latency("search", latency_ms, settings.search_sla_ms)
+            if ctx and span:
+                span.docs_count = docs_count if status == "success" else 0
+                ctx.end_span(span, status, error)
+
+    return wrapper
+
+
+def trace_model_selection(func: Callable) -> Callable:
+    """Decorator to trace model selection operations."""
+
+    @wraps(func)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        ctx = get_current_tracer()
+        span = ctx.start_span("select_model") if ctx else None
+        start = time.perf_counter()
+        status = "success"
+        error: Optional[str] = None
+        model_name: Optional[str] = None
+        reason: Optional[str] = None
+        try:
+            result = func(*args, **kwargs)
+            if isinstance(result, tuple) and len(result) >= 3:
+                model_name = result[0]
+                reason = result[2]
+            return result
+        except Exception as exc:
+            status = "error"
+            error = str(exc)
+            raise
+        finally:
+            latency_ms = (time.perf_counter() - start) * 1000
+            record_latency("model_select", latency_ms)
+            if ctx and span:
+                if len({settings.simple_model, settings.complex_model}) >= 2:
+                    span.model_name = model_name
+                    span.selection_reason = reason
+                ctx.end_span(span, status, error)
+            if model_name is None and settings.log_level == "DEBUG":
+                logger.warning("No model selected in model selector")
 
     return wrapper
