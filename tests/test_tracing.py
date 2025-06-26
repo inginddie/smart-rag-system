@@ -1,9 +1,12 @@
+import logging
 import sqlite3
 
 import pytest
 
 from config.settings import settings
-from src.utils.exceptions import TracingException
+from src.storage.vector_store import VectorStoreManager
+from src.utils.exceptions import TracingException, VectorStoreException
+from src.utils.model_selector import ModelSelector
 from src.utils.tracing import (
     TRACE_QUEUE,
     LLMTracer,
@@ -11,9 +14,8 @@ from src.utils.tracing import (
     get_current_tracer,
     requires_tracer,
     trace_llm,
+    trace_model_selection,
 )
-from src.storage.vector_store import VectorStoreManager
-from src.utils.exceptions import VectorStoreException
 
 
 def setup_temp_db(tmp_path):
@@ -157,3 +159,46 @@ def test_trace_retrieval_error(monkeypatch):
     assert span["status"] == "error"
     assert span.get("docs_count") == 0
     assert span.get("error")
+
+
+def test_model_selection_tracing_simple():
+    selector = ModelSelector()
+    clear_queue()
+    with Tracer():
+        selector.select_model("¿Qué es Python?")
+    trace = TRACE_QUEUE.get_nowait()
+    span = trace["spans"][0]
+    assert span["model_name"] == settings.simple_model
+    assert span.get("selection_reason")
+
+
+def test_model_selection_tracing_complex():
+    selector = ModelSelector()
+    query = (
+        "Realiza un análisis comparativo de frameworks de Machine Learning "
+        "en la literatura académica y sus limitaciones"
+    )
+    clear_queue()
+    with Tracer():
+        selector.select_model(query)
+    trace = TRACE_QUEUE.get_nowait()
+    span = trace["spans"][0]
+    assert span["model_name"] == settings.complex_model
+    assert span.get("selection_reason")
+
+
+def test_model_selection_warning_no_model(monkeypatch, caplog):
+    settings.log_level = "DEBUG"
+
+    @trace_model_selection
+    def fake_select(self, query: str):
+        return None, 0.0, "no model"
+
+    monkeypatch.setattr(ModelSelector, "select_model", fake_select)
+    selector = ModelSelector()
+    clear_queue()
+    with caplog.at_level(logging.WARNING):
+        with Tracer():
+            selector.select_model("test")
+    assert any("No model selected" in rec.message for rec in caplog.records)
+    settings.log_level = "INFO"

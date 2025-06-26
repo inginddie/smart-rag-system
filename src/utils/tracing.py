@@ -10,7 +10,10 @@ from typing import Any, Callable, Dict, Optional, Sequence
 
 from config.settings import settings
 from src.utils.exceptions import TracingException
+from src.utils.logger import setup_logger
 from src.utils.metrics import record_latency
+
+logger = setup_logger()
 
 TRACE_QUEUE: "queue.Queue" = queue.Queue()
 _current_tracer: "contextvars.ContextVar[Optional['Tracer']]" = contextvars.ContextVar(
@@ -32,6 +35,8 @@ class Span:
         self.error: Optional[str] = None
         self.duration_ms: Optional[float] = None
         self.docs_count: Optional[int] = None
+        self.model_name: Optional[str] = None
+        self.selection_reason: Optional[str] = None
 
     def finish(self, status: str, error: Optional[str] = None) -> None:
         self.end_time = time.perf_counter()
@@ -286,5 +291,41 @@ def trace_retrieval(func: Callable) -> Callable:
             if ctx and span:
                 span.docs_count = docs_count if status == "success" else 0
                 ctx.end_span(span, status, error)
+
+    return wrapper
+
+
+def trace_model_selection(func: Callable) -> Callable:
+    """Decorator to trace model selection operations."""
+
+    @wraps(func)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        ctx = get_current_tracer()
+        span = ctx.start_span("select_model") if ctx else None
+        start = time.perf_counter()
+        status = "success"
+        error: Optional[str] = None
+        model_name: Optional[str] = None
+        reason: Optional[str] = None
+        try:
+            result = func(*args, **kwargs)
+            if isinstance(result, tuple) and len(result) >= 3:
+                model_name = result[0]
+                reason = result[2]
+            return result
+        except Exception as exc:
+            status = "error"
+            error = str(exc)
+            raise
+        finally:
+            latency_ms = (time.perf_counter() - start) * 1000
+            record_latency("model_select", latency_ms)
+            if ctx and span:
+                if len({settings.simple_model, settings.complex_model}) >= 2:
+                    span.model_name = model_name
+                    span.selection_reason = reason
+                ctx.end_span(span, status, error)
+            if model_name is None and settings.log_level == "DEBUG":
+                logger.warning("No model selected in model selector")
 
     return wrapper
