@@ -1,70 +1,96 @@
 # -*- coding: utf-8 -*-
+import os
 from pathlib import Path
-from typing import Optional
-import sys
-
-from pydantic import BaseSettings, Field, validator, ValidationError
+from typing import Dict, Optional
 
 try:
-    from pydantic_settings import BaseSettings as SettingsBase
+    from pydantic_settings import BaseSettings
+    from pydantic import Field
+    PYDANTIC_V2 = True
 except ImportError:
-    SettingsBase = BaseSettings
+    from pydantic import BaseSettings, Field
+    PYDANTIC_V2 = False
 
 try:
     from dotenv import load_dotenv
 except ImportError:
     def load_dotenv(*args, **kwargs):
-        print("Advertencia: python-dotenv no está instalado, las variables de entorno no se cargarán desde .env", file=sys.stderr)
         return False
 
 load_dotenv()
 
-
-class Settings(SettingsBase):
+class Settings(BaseSettings):
     """Configuración centralizada con selección inteligente de modelos"""
 
-    openai_api_key: str = Field(..., env="OPENAI_API_KEY", description="Clave API para OpenAI, no puede estar vacía")
+    # OpenAI Configuration
+    openai_api_key: str = Field(default="", alias="OPENAI_API_KEY")
 
-    simple_model: str = Field(default="gpt-4o-mini", env="SIMPLE_MODEL", description="Modelo simple para tareas básicas")
-    complex_model: str = Field(default="gpt-4o", env="COMPLEX_MODEL", description="Modelo complejo para tareas avanzadas")
-    default_model: str = Field(default="gpt-4o-mini", env="DEFAULT_MODEL", description="Modelo por defecto")
+    # Modelos disponibles para selección inteligente
+    simple_model: str = Field(default="gpt-4o-mini", alias="SIMPLE_MODEL")
+    complex_model: str = Field(default="gpt-4o", alias="COMPLEX_MODEL")
+    default_model: str = Field(default="gpt-4o-mini", alias="DEFAULT_MODEL")
 
-    embedding_model: str = Field(
-        default="text-embedding-3-large", env="EMBEDDING_MODEL", description="Modelo para embeddings"
+    # Precios por cada 1000 tokens de los modelos
+    model_prices: Dict[str, float] = Field(
+        default={"gpt-4o": 0.02, "gpt-4o-mini": 0.01}
     )
 
-    vector_db_path: Optional[Path] = Field(default=Path("./data/vector_db"), env="VECTOR_DB_PATH", description="Ruta al directorio de la base de datos vectorial")
-    documents_path: Optional[Path] = Field(default=Path("./data/documents"), env="DOCUMENTS_PATH", description="Ruta al directorio de documentos")
+    # COMPATIBILIDAD: mantener model_name para código legacy
+    @property
+    def model_name(self) -> str:
+        """Compatibilidad con código que usa model_name"""
+        return self.default_model
 
-    @validator("openai_api_key")
-    def openai_api_key_must_not_be_empty(cls, v):
-        if not v or v.strip() == "":
-            raise ValueError("La variable OPENAI_API_KEY no puede estar vacía.")
-        return v
+    # Embedding
+    embedding_model: str = Field(
+        default="text-embedding-3-large", alias="EMBEDDING_MODEL"
+    )
 
-    @validator("vector_db_path", "documents_path", pre=True, always=True)
-    def ensure_path_object(cls, v):
-        if isinstance(v, str):
-            return Path(v)
-        return v
+    # Paths
+    vector_db_path: str = Field(default="./data/vector_db", alias="VECTOR_DB_PATH")
+    documents_path: str = Field(default="./data/documents", alias="DOCUMENTS_PATH")
+    trace_db_path: str = Field(default="./data/traces.db", alias="TRACE_DB_PATH")
 
-    @validator("vector_db_path", "documents_path")
-    def create_path_if_not_exists(cls, v):
-        if v and not v.exists():
-            try:
-                v.mkdir(parents=True, exist_ok=True)
-            except Exception as e:
-                raise ValueError(f"No se pudo crear el directorio {v}: {e}")
-        return v
+    # RAG Configuration
+    chunk_size: int = Field(default=2200, alias="CHUNK_SIZE")
+    chunk_overlap: int = Field(default=440, alias="CHUNK_OVERLAP")
+    max_documents: int = Field(default=10, alias="MAX_DOCUMENTS")
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        extra = "ignore"
+    # Model Selection Configuration
+    enable_smart_selection: bool = Field(default=True, alias="ENABLE_SMART_SELECTION")
+    complexity_threshold: float = Field(default=0.6, alias="COMPLEXITY_THRESHOLD")
 
+    # Logging
+    log_level: str = Field(default="INFO", alias="LOG_LEVEL")
 
-try:
-    settings = Settings()
-except ValidationError as e:
-    print("Error en la configuración:", e, file=sys.stderr)
-    sys.exit(1)
+    # UI Configuration
+    share_gradio: bool = Field(default=False, alias="SHARE_GRADIO")
+    server_port: int = Field(default=7860, alias="SERVER_PORT")
+
+    # Expert/Debug UI Configuration
+    show_model_info_in_ui: bool = Field(default=False, alias="SHOW_MODEL_INFO_UI")
+    expert_mode: bool = Field(default=False, alias="EXPERT_MODE")
+    show_technical_errors: bool = Field(default=False, alias="SHOW_TECHNICAL_ERRORS")
+
+    # Observability & SLA
+    metrics_port: int = Field(default=8000, alias="METRICS_PORT")
+    ingest_sla_ms: int = Field(default=1000, alias="INGEST_SLA_MS")
+    embed_sla_ms: int = Field(default=1000, alias="EMBED_SLA_MS")
+    chunk_sla_ms: int = Field(default=1000, alias="CHUNK_SLA_MS")
+    search_sla_ms: int = Field(default=1000, alias="SEARCH_SLA_MS")
+    synthesize_sla_ms: int = Field(default=2000, alias="SYNTHESIZE_SLA_MS")
+
+    if PYDANTIC_V2:
+        model_config = {
+            "env_file": ".env",
+            "case_sensitive": False,
+            "extra": "ignore"
+        }
+    else:
+        class Config:
+            env_file = ".env"
+            case_sensitive = False
+            extra = "ignore"
+
+# Instancia global de configuración
+settings = Settings()

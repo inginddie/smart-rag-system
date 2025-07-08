@@ -26,8 +26,8 @@ class GradioRAGApp:
             logger.error(f"Error initializing service: {e}")
             return f"❌ Error al inicializar: {str(e)}"
     
-    def chat_response(self, message: str, history: List[Tuple[str, str]]) -> str:
-        """Maneja las respuestas del chat con selección inteligente de modelos"""
+    def chat_response(self, message: str, history: List[Tuple[str, str]], show_technical_info: bool = False) -> str:
+        """Maneja las respuestas del chat con control de información técnica"""
         if not self.initialized:
             return "❌ El sistema no está inicializado. Por favor inicialízalo primero."
         
@@ -39,18 +39,27 @@ class GradioRAGApp:
             result = self.rag_service.query(message)
             response = result['answer']
             
-            # Agregar información del modelo usado (opcional, para debugging)
+            # Solo mostrar información técnica si se solicita explícitamente o en modo DEBUG
             model_info = result.get('model_info', {})
-            if model_info and settings.log_level == "DEBUG":
+            should_show_technical = (
+                show_technical_info or 
+                (settings.log_level == "DEBUG" and hasattr(settings, 'show_model_info_in_ui') and settings.show_model_info_in_ui)
+            )
+            
+            if model_info and should_show_technical:
                 model_name = model_info.get('selected_model', 'unknown')
                 complexity = model_info.get('complexity_score', 0)
-                response += f"\n\n*[Procesado con {model_name}, complejidad: {complexity:.2f}]*"
+                response += f"\n\n📋 *Información técnica: Procesado con {model_name} (complejidad: {complexity:.2f})*"
             
             return response
             
         except Exception as e:
             logger.error(f"Error in chat response: {e}")
-            return f"❌ Error al procesar la pregunta: {str(e)}"
+            # Solo mostrar detalles técnicos si está habilitado
+            if settings.show_technical_errors:
+                return f"❌ Error al procesar la pregunta: {str(e)}"
+            else:
+                return "❌ Error al procesar la pregunta. Por favor, inténtalo de nuevo o contacta al administrador."
     
     def reindex_documents(self) -> str:
         """Reindexar documentos"""

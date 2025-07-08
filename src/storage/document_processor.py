@@ -12,6 +12,7 @@ try:
     import psycopg2
 except ImportError:  # pragma: no cover - optional dependency
     psycopg2 = None  # type: ignore
+
 try:
     from langchain_community.document_loaders import (
         TextLoader,
@@ -39,21 +40,23 @@ except ImportError:  # pragma: no cover - optional dependency
                 content = f.read()
             return [Document(page_content=content, metadata={})]
 
-    class ExcelLoader:
-        def __init__(self, path: str):
-            self.path = path
+# Definir ExcelLoader siempre disponible (fuera del bloque except)
+class ExcelLoader:
+    def __init__(self, path: str):
+        self.path = path
 
-        def load(self):
-            if pd is None:
-                raise ImportError("pandas is required for Excel loading")
-            df = pd.read_excel(self.path, engine="openpyxl")
-            text = (
-                df.astype(str)
-                .fillna("")
-                .agg(" ".join, axis=1)
-                .str.cat(sep="\n")
-            )
-            return [Document(page_content=text, metadata={})]
+    def load(self):
+        if pd is None:
+            raise ImportError("pandas is required for Excel loading")
+        df = pd.read_excel(self.path, engine="openpyxl")
+        text = (
+            df.astype(str)
+            .fillna("")
+            .agg(" ".join, axis=1)
+            .str.cat(sep="\n")
+        )
+        return [Document(page_content=text, metadata={})]
+
 from config.settings import settings
 from src.utils.logger import setup_logger
 from src.utils.exceptions import DocumentProcessingException

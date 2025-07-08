@@ -1,8 +1,62 @@
 version: '3.8'
+
 services:
-  app:
-    build: .
+  rag-app:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: rag_system
     ports:
-      - "7860:7860"
+      - "7860:7860"    # Gradio UI
+      - "8000:8000"    # Métricas (opcional)
     environment:
+      # Variables de entorno necesarias
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - DOCUMENTS_PATH=/app/data/documents
+      - VECTOR_DB_PATH=/app/data/vector_db
+      - TRACE_DB_PATH=/app/data/traces.db
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - SERVER_PORT=7860
+      - METRICS_PORT=8000
+      # Configuración RAG
+      - CHUNK_SIZE=${CHUNK_SIZE:-2200}
+      - CHUNK_OVERLAP=${CHUNK_OVERLAP:-440}
+      - MAX_DOCUMENTS=${MAX_DOCUMENTS:-10}
+      # Modelos
+      - SIMPLE_MODEL=${SIMPLE_MODEL:-gpt-4o-mini}
+      - COMPLEX_MODEL=${COMPLEX_MODEL:-gpt-4o}
+      - DEFAULT_MODEL=${DEFAULT_MODEL:-gpt-4o-mini}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-text-embedding-3-large}
+    volumes:
+      # Persistencia de datos
+      - ./data/documents:/app/data/documents
+      - ./data/vector_db:/app/data/vector_db
+      - ./data:/app/data
+      - ./logs:/app/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7860"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    depends_on:
+      - setup-directories
+
+  # Servicio auxiliar para crear directorios necesarios
+  setup-directories:
+    image: alpine:latest
+    container_name: rag_setup
+    volumes:
+      - ./data:/data
+      - ./logs:/logs
+    command: >
+      sh -c "
+        mkdir -p /data/documents /data/vector_db /logs &&
+        chown -R 1000:1000 /data /logs &&
+        echo 'Directorios creados correctamente'
+      "
+
+networks:
+  default:
+    name: rag_network
