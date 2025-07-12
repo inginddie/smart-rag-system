@@ -57,7 +57,7 @@ class GradioRAGApp:
             logger.error(f"Error in chat response: {e}")
             # Solo mostrar detalles técnicos si está habilitado
             if settings.show_technical_errors:
-                return f"❌ Error al procesar la pregunta: {str(e)}"
+            return f"❌ Error al procesar la pregunta: {str(e)}"
             else:
                 return "❌ Error al procesar la pregunta. Por favor, inténtalo de nuevo o contacta al administrador."
     
