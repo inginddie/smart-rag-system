@@ -16,10 +16,14 @@ from src.utils.logger import setup_logger
 from src.utils.exceptions import ChainException
 from src.utils.tracing import trace_llm
 
+# ======= NUEVAS IMPORTACIONES PARA INTENT DETECTION =======
+from src.utils.intent_detector import intent_detector, IntentType
+from src.chains.prompt_templates import prompt_template_selector
+
 logger = setup_logger()
 
 class RAGChain:
-    """Cadena RAG con selección inteligente de modelos para investigación académica"""
+    """Cadena RAG con selección inteligente de modelos y detección de intención académica"""
     
     def __init__(self, 
                  system_prompt: Optional[str] = None,
@@ -37,6 +41,10 @@ class RAGChain:
         # Cache de modelos para evitar reinicialización
         self._model_cache = {}
         self._chain_cache = {}
+        
+        # ======= NUEVOS COMPONENTES PARA INTENT DETECTION =======
+        self.intent_detection_enabled = settings.enable_intent_detection
+        logger.info(f"RAG Chain initialized with intent detection: {'enabled' if self.intent_detection_enabled else 'disabled'}")
     
     @property
     def model_selector(self):
@@ -111,9 +119,12 @@ Responde con rigor académico, precisión científica y enfoque específico en l
         
         return self._model_cache[model_name]
     
-    def _create_chain_for_model(self, model_name: str):
-        """Crea una cadena RAG para un modelo específico"""
-        if model_name not in self._chain_cache:
+    def _create_chain_for_model(self, model_name: str, specialized_prompt: Optional[str] = None):
+        """Crea una cadena RAG para un modelo específico con prompt personalizado"""
+        # ======= MODIFICADO PARA SOPORTAR PROMPTS ESPECIALIZADOS =======
+        cache_key = f"{model_name}_{hash(specialized_prompt) if specialized_prompt else 'default'}"
+        
+        if cache_key not in self._chain_cache:
             try:
                 if None in (ChatOpenAI, create_retrieval_chain, create_stuff_documents_chain, ChatPromptTemplate):
                     raise ChainException("LangChain dependencies are required but not installed")
@@ -121,21 +132,24 @@ Responde con rigor académico, precisión científica y enfoque específico en l
                 llm = self._get_or_create_model(model_name)
                 retriever = self.vector_store_manager.get_retriever()
                 
+                # Usar prompt especializado si está disponible, sino usar el default
+                prompt_to_use = specialized_prompt or self.system_prompt
+                
                 prompt_template = ChatPromptTemplate.from_messages([
-                    ("system", self.system_prompt),
+                    ("system", prompt_to_use),
                     ("human", "{input}"),
                 ])
                 
                 document_chain = create_stuff_documents_chain(llm=llm, prompt=prompt_template)
-                self._chain_cache[model_name] = create_retrieval_chain(retriever, document_chain)
+                self._chain_cache[cache_key] = create_retrieval_chain(retriever, document_chain)
                 
-                logger.info(f"Created RAG chain for model: {model_name}")
+                logger.info(f"Created RAG chain for model: {model_name} with specialized prompt: {specialized_prompt is not None}")
                 
             except Exception as e:
                 logger.error(f"Error creating chain for {model_name}: {e}")
                 raise ChainException(f"Failed to create chain for {model_name}: {e}")
         
-        return self._chain_cache[model_name]
+        return self._chain_cache[cache_key]
     
     def create_chain(self):
         """Crea la cadena RAG con modelo por defecto"""
@@ -143,7 +157,7 @@ Responde con rigor académico, precisión científica y enfoque específico en l
             # Crear cadena con modelo por defecto para compatibilidad
             default_model = settings.default_model
             self._create_chain_for_model(default_model)
-            logger.info("RAG chain created successfully with smart model selection")
+            logger.info("RAG chain created successfully with smart model selection and intent detection capabilities")
             
         except Exception as e:
             logger.error(f"Error creating RAG chain: {e}")
@@ -151,9 +165,50 @@ Responde con rigor académico, precisión científica y enfoque específico en l
     
     @trace_llm
     def invoke(self, query: str) -> Dict[str, Any]:
-        """Ejecuta la cadena RAG con selección inteligente de modelo"""
+        """Ejecuta la cadena RAG con selección inteligente de modelo y detección de intención"""
         try:
-            # Seleccionar modelo basado en complejidad de la consulta
+            logger.debug(f"Processing query with RAG Chain: {query[:100]}...")
+            
+            # ======= NUEVA LÓGICA DE INTENT DETECTION =======
+            intent_info = None
+            specialized_prompt = None
+            
+            if self.intent_detection_enabled:
+                try:
+                    # Detectar intención de la consulta
+                    import asyncio
+                    intent_result = asyncio.run(intent_detector.detect_intent(query))
+                    
+                    # Crear información de intención para incluir en respuesta
+                    intent_info = {
+                        'detected_intent': intent_result.intent_type.value,
+                        'confidence': intent_result.confidence,
+                        'reasoning': intent_result.reasoning,
+                        'processing_time_ms': intent_result.processing_time_ms,
+                        'fallback_used': intent_result.fallback_used
+                    }
+                    
+                    # Seleccionar prompt especializado basado en intención
+                    if intent_result.intent_type != IntentType.UNKNOWN and intent_result.confidence >= settings.intent_confidence_threshold:
+                        specialized_prompt = prompt_template_selector.select_template(
+                            intent_result.intent_type, 
+                            self.system_prompt
+                        )
+                        logger.info(f"Using specialized prompt for intent: {intent_result.intent_type.value} (confidence: {intent_result.confidence:.2f})")
+                    else:
+                        logger.info(f"Using default prompt - intent confidence too low: {intent_result.confidence:.2f}")
+                        
+                except Exception as e:
+                    logger.error(f"Error in intent detection: {e}, falling back to default behavior")
+                    intent_info = {
+                        'detected_intent': 'error',
+                        'confidence': 0.0,
+                        'reasoning': f'Intent detection failed: {str(e)}',
+                        'processing_time_ms': 0.0,
+                        'fallback_used': True
+                    }
+            
+            # ======= LÓGICA EXISTENTE DE MODEL SELECTION (MANTENIDA) =======
             if settings.enable_smart_selection:
                 selected_model, complexity_score, reasoning = self.model_selector.select_model(query)
             else:
@@ -161,22 +216,31 @@ Responde con rigor académico, precisión científica y enfoque específico en l
                 complexity_score = 0.5
                 reasoning = "Smart selection disabled"
             
-            # Crear/obtener cadena para el modelo seleccionado
-            chain = self._create_chain_for_model(selected_model)
+            # ======= CREAR/OBTENER CADENA CON PROMPT ESPECIALIZADO =======
+            chain = self._create_chain_for_model(selected_model, specialized_prompt)
             
             logger.info(f"Processing query with {selected_model}: {query[:50]}...")
             
             # Ejecutar consulta
             result = chain.invoke({"input": query})
             
-            # Agregar información de selección de modelo al resultado
+            # ======= AGREGAR INFORMACIÓN EXTENDIDA AL RESULTADO =======
+            # Información existente de selección de modelo
             result['model_info'] = {
                 'selected_model': selected_model,
                 'complexity_score': complexity_score,
                 'reasoning': reasoning
             }
             
-            logger.info(f"Query processed successfully with {selected_model}")
+            # Nueva información de detección de intención
+            if intent_info:
+                result['intent_info'] = intent_info
+                
+                # Agregar indicador si se usó prompt especializado
+                result['intent_info']['specialized_prompt_used'] = specialized_prompt is not None
+            
+            logger.info(f"Query processed successfully with {selected_model}" + 
+                       (f" using {intent_info['detected_intent']} intent" if intent_info else ""))
             return result
             
         except Exception as e:
@@ -189,13 +253,14 @@ Responde con rigor académico, precisión científica y enfoque específico en l
         return result.get('answer', 'No se pudo generar una respuesta académica.')
     
     def get_academic_analysis(self, query: str) -> Dict[str, Any]:
-        """Obtiene análisis académico completo incluyendo información del modelo"""
+        """Obtiene análisis académico completo incluyendo información del modelo e intención"""
         result = self.invoke(query)
         
         # Extraer información adicional para análisis académico
         analysis = {
             'answer': result.get('answer', 'No se pudo generar respuesta'),
             'model_info': result.get('model_info', {}),
+            'intent_info': result.get('intent_info', {}),  # Nueva información de intención
             'sources_used': len(result.get('context', [])),
             'query': query,
             'context_documents': []
