@@ -39,16 +39,25 @@ except ImportError:  # pragma: no cover - optional dependency
                 content = f.read()
             return [Document(page_content=content, metadata={})]
 
+    # ======= IMPLEMENTACIÓN CORREGIDA DE ExcelLoader =======
     class ExcelLoader:
+        """Loader para archivos Excel que maneja dependencias opcionales"""
         def __init__(self, path: str):
             self.path = path
 
         def load(self):
             if pd is None:
-                raise ImportError("pandas is required for Excel loading")
-            df = pd.read_excel(self.path, engine="openpyxl")
-            text = df.astype(str).fillna("").agg(" ".join, axis=1).str.cat(sep="\n")
-            return [Document(page_content=text, metadata={})]
+                raise ImportError("pandas is required for Excel loading but is not installed. Install with: pip install pandas openpyxl")
+            try:
+                # Intentar leer el archivo Excel
+                df = pd.read_excel(self.path, engine="openpyxl")
+                # Convertir DataFrame a texto para procesamiento
+                text = df.astype(str).fillna("").agg(" ".join, axis=1).str.cat(sep="\n")
+                return [Document(page_content=text, metadata={"source": self.path, "type": "excel"})]
+            except Exception as e:
+                # Si hay error, crear un documento vacío con información del error
+                error_msg = f"Error loading Excel file {self.path}: {str(e)}"
+                return [Document(page_content=error_msg, metadata={"source": self.path, "type": "excel", "error": True})]
 
 
 import time
@@ -88,14 +97,21 @@ class DocumentProcessor:
                 separators=["\n\n", "\n", ". ", " ", ""],
             )
 
-        # Mapeo de extensiones a loaders
+        # ======= MAPEO CORREGIDO CON MANEJO DE DEPENDENCIAS =======
+        # Mapeo de extensiones a loaders con verificación de disponibilidad
         self.loader_mapping = {
             ".txt": TextLoader,
             ".pdf": PyPDFLoader,
             ".docx": Docx2txtLoader,
-            ".xls": ExcelLoader,
-            ".xlsx": ExcelLoader,
         }
+        
+        # Solo agregar loaders de Excel si las dependencias están disponibles
+        if pd is not None:
+            self.loader_mapping[".xls"] = ExcelLoader
+            self.loader_mapping[".xlsx"] = ExcelLoader
+            logger.info("Excel support enabled (pandas available)")
+        else:
+            logger.warning("Excel support disabled (pandas not available). Install pandas and openpyxl to enable Excel processing.")
 
     def _safe_load_file(self, file_path: Path, loader_class):
         """Carga segura de archivos con manejo de errores"""
