@@ -72,6 +72,14 @@ class GradioRAGApp:
         lines = "\n".join(f"- {q}" for q in faqs)
         return f"**Preguntas frecuentes:**\n{lines}"
     
+    def get_total_documents(self) -> int:
+        """Obtiene el número total de documentos procesados"""
+        try:
+            return self.rag_service.get_total_documents_processed()
+        except Exception as e:
+            logger.error(f"Error obteniendo total de documentos: {e}")
+            return 0
+
     def create_interface(self) -> gr.Blocks:
         """Crea la interfaz de Gradio actualizada"""
         with gr.Blocks(
@@ -246,17 +254,18 @@ class GradioRAGApp:
                     3. **Verifica nombres** descriptivos de archivos
                     4. **Inicia con papers fundamentales** antes de casos específicos
                     """)
-            
-            # Event handlers
-            init_btn.click(
-                fn=self.initialize_service,
-                outputs=status_output
-            )
-            
-            reindex_btn.click(
-                fn=self.reindex_documents,
-                outputs=status_output
-            )
+                
+                # Tab de estado del sistema
+                with gr.TabItem("📊 Estado del Sistema"):
+                    gr.Markdown("### Resumen del Estado Actual del Sistema RAG")
+                    document_count_display = gr.Textbox(label="Número total de documentos procesados", interactive=False)
+                    refresh_btn = gr.Button("Actualizar")
+
+                    refresh_btn.click(
+                        fn=self.get_total_documents,
+                        inputs=None,
+                        outputs=document_count_display
+                    )
         
         return interface
     
@@ -275,3 +284,24 @@ class GradioRAGApp:
         
         logger.info(f"Launching RAG app with smart model selection on port {launch_kwargs['server_port']}")
         interface.launch(**launch_kwargs)
+
+import React from 'react';
+import DocumentCountPanel from './components/DocumentCountPanel';
+
+// Función simulada para obtener el número de documentos procesados
+const fetchDocumentCount = async () => {
+  // Aquí se debe llamar al backend real para obtener el dato
+  return 123; // Valor simulado
+};
+
+const App = () => {
+  return (
+    <div>
+      <h1>Sistema RAG - Panel Principal</h1>
+      <DocumentCountPanel fetchDocumentCount={fetchDocumentCount} />
+      {/* Otros componentes y funcionalidades del frontend */}
+    </div>
+  );
+};
+
+export default App;

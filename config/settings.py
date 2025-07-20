@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import os
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 
 from pydantic import Field
 
@@ -62,6 +62,49 @@ class Settings(BaseSettings):
     # Model Selection Configuration
     enable_smart_selection: bool = Field(default=True, env="ENABLE_SMART_SELECTION")
     complexity_threshold: float = Field(default=0.6, env="COMPLEXITY_THRESHOLD")
+
+    # ======= NUEVAS CONFIGURACIONES PARA INTENT DETECTION =======
+    
+    # Intent Detection Configuration
+    enable_intent_detection: bool = Field(default=True, env="ENABLE_INTENT_DETECTION")
+    intent_confidence_threshold: float = Field(default=0.6, env="INTENT_CONFIDENCE_THRESHOLD")
+    intent_max_processing_time_ms: int = Field(default=200, env="INTENT_MAX_PROCESSING_TIME_MS")
+    
+    # Academic Keywords for Intent Classification
+    intent_keywords: Dict[str, List[str]] = Field(
+        default={
+            "definition": [
+                "what is", "define", "qué es", "definition of", "concept of",
+                "meaning of", "explain", "explica", "significado de"
+            ],
+            "comparison": [
+                "compare", "compara", "versus", "vs", "difference between",
+                "diferencia entre", "advantages and disadvantages", "pros and cons",
+                "ventajas y desventajas", "contrast", "contrasta"
+            ],
+            "state_of_art": [
+                "state of the art", "estado del arte", "current approaches",
+                "enfoques actuales", "latest research", "recent developments",
+                "literatura actual", "survey of", "review of", "overview of"
+            ],
+            "gap_analysis": [
+                "limitations", "limitaciones", "gaps", "brechas", "future work",
+                "trabajo futuro", "research gaps", "what is missing",
+                "qué falta", "open problems", "challenges", "desafíos"
+            ]
+        }
+    )
+    
+    # Intent Pattern Weights (for scoring)
+    intent_pattern_weights: Dict[str, float] = Field(
+        default={
+            "question_start": 0.8,
+            "imperative": 0.9,
+            "comparison_phrase": 0.85,
+            "explicit_indicator": 0.95,
+            "academic_verb": 0.7
+        }
+    )
 
     # Logging
     log_level: str = Field(default="INFO", env="LOG_LEVEL")

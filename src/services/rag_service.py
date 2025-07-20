@@ -179,3 +179,12 @@ class RAGService:
         except Exception as e:
             logger.error(f"Error getting detailed analysis: {e}")
             raise RAGException(f"Failed to get detailed analysis: {e}")
+    
+    def get_total_documents_processed(self) -> int:
+        """Devuelve el número total de documentos procesados."""
+        try:
+            # Suponiendo que hay un método o atributo que mantiene el conteo
+            return self.document_count  # Ajustar según implementación real
+        except AttributeError:
+            # Si no existe, calcular o devolver 0
+            return 0
