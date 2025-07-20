@@ -26,7 +26,7 @@ import asyncio
 logger = setup_logger()
 
 class RAGChain:
-    """Cadena RAG con selección inteligente de modelos y detección de intención académica"""
+    """Cadena RAG con selección inteligente de modelos, detección de intención académica y expansión de consultas"""
     
     def __init__(self, 
                  system_prompt: Optional[str] = None,
@@ -160,7 +160,7 @@ Responde con rigor académico, precisión científica y enfoque específico en l
             # Crear cadena con modelo por defecto para compatibilidad
             default_model = settings.default_model
             self._create_chain_for_model(default_model)
-            logger.info("RAG chain created successfully with smart model selection and intent detection capabilities")
+            logger.info("RAG chain created successfully with smart model selection, intent detection and query expansion capabilities")
             
         except Exception as e:
             logger.error(f"Error creating RAG chain: {e}")
@@ -211,20 +211,19 @@ Responde con rigor académico, precisión científica y enfoque específico en l
     
     @trace_llm
     def invoke(self, query: str) -> Dict[str, Any]:
-        """Ejecuta la cadena RAG con selección inteligente de modelo y detección de intención"""
+        """Ejecuta la cadena RAG con selección inteligente de modelo, detección de intención y expansión de consulta"""
         try:
             logger.debug(f"Processing query with RAG Chain: {query[:100]}...")
             
-            # ======= NUEVA LÓGICA DE INTENT DETECTION CORREGIDA =======
+            # ======= LÓGICA DE INTENT DETECTION =======
             intent_info = None
             specialized_prompt = None
+            intent_type = None
             
             if self.intent_detection_enabled:
                 try:
-                    # Usar método síncrono corregido para intent detection
                     intent_info = self._detect_intent_sync(query)
                     
-                    # Seleccionar prompt especializado basado en intención
                     if (intent_info['detected_intent'] != 'unknown' and 
                         intent_info['detected_intent'] != 'error' and 
                         intent_info['confidence'] >= settings.intent_confidence_threshold):
@@ -251,7 +250,7 @@ Responde con rigor académico, precisión científica y enfoque específico en l
                         'specialized_prompt_used': False
                     }
             
-            # ======= LÓGICA EXISTENTE DE MODEL SELECTION (MANTENIDA) =======
+            # ======= LÓGICA DE MODEL SELECTION =======
             if settings.enable_smart_selection:
                 selected_model, complexity_score, reasoning = self.model_selector.select_model(query)
             else:
@@ -259,8 +258,39 @@ Responde con rigor académico, precisión científica y enfoque específico en l
                 complexity_score = 0.5
                 reasoning = "Smart selection disabled"
             
-            # ======= CREAR/OBTENER CADENA CON PROMPT ESPECIALIZADO =======
-            chain = self._create_chain_for_model(selected_model, specialized_prompt)
+            # ======= CREAR CADENA CON RETRIEVER QUE SOPORTA EXPANSION =======
+            # Modificar retriever para pasar intent_type a similarity_search
+            retriever = self.vector_store_manager.get_retriever()
+            
+            # Wrapper para pasar intent_type al vector store
+            class IntentAwareRetriever:
+                def __init__(self, vector_store_manager, intent_type=None):
+                    self.vector_store_manager = vector_store_manager
+                    self.intent_type = intent_type
+                
+                def get_relevant_documents(self, query):
+                    return self.vector_store_manager.similarity_search(
+                        query, 
+                        k=settings.max_documents,
+                        intent_type=self.intent_type
+                    )
+            
+            intent_aware_retriever = IntentAwareRetriever(self.vector_store_manager, intent_type)
+            
+            # Crear cadena con retriever que soporta expansion
+            if None in (ChatOpenAI, create_retrieval_chain, create_stuff_documents_chain, ChatPromptTemplate):
+                raise ChainException("LangChain dependencies are required but not installed")
+
+            llm = self._get_or_create_model(selected_model)
+            prompt_to_use = specialized_prompt or self.system_prompt
+            
+            prompt_template = ChatPromptTemplate.from_messages([
+                ("system", prompt_to_use),
+                ("human", "{input}"),
+            ])
+            
+            document_chain = create_stuff_documents_chain(llm=llm, prompt=prompt_template)
+            chain = create_retrieval_chain(intent_aware_retriever, document_chain)
             
             logger.info(f"Processing query with {selected_model}: {query[:50]}...")
             
@@ -268,19 +298,26 @@ Responde con rigor académico, precisión científica y enfoque específico en l
             result = chain.invoke({"input": query})
             
             # ======= AGREGAR INFORMACIÓN EXTENDIDA AL RESULTADO =======
-            # Información existente de selección de modelo
             result['model_info'] = {
                 'selected_model': selected_model,
                 'complexity_score': complexity_score,
                 'reasoning': reasoning
             }
             
-            # Nueva información de detección de intención
             if intent_info:
                 result['intent_info'] = intent_info
             
+            # Extraer información de query expansion de los documentos
+            expansion_info = None
+            if result.get('context') and len(result['context']) > 0:
+                first_doc = result['context'][0]
+                if hasattr(first_doc, 'metadata') and 'query_expansion' in first_doc.metadata:
+                    expansion_info = first_doc.metadata['query_expansion']
+                    result['expansion_info'] = expansion_info
+            
             logger.info(f"Query processed successfully with {selected_model}" + 
-                       (f" using {intent_info['detected_intent']} intent" if intent_info else ""))
+                       (f" using {intent_info['detected_intent']} intent" if intent_info else "") +
+                       (f" with {expansion_info['expansion_count']} expanded terms" if expansion_info else ""))
             return result
             
         except Exception as e:
@@ -293,14 +330,15 @@ Responde con rigor académico, precisión científica y enfoque específico en l
         return result.get('answer', 'No se pudo generar una respuesta académica.')
     
     def get_academic_analysis(self, query: str) -> Dict[str, Any]:
-        """Obtiene análisis académico completo incluyendo información del modelo e intención"""
+        """Obtiene análisis académico completo incluyendo información del modelo, intención y expansión"""
         result = self.invoke(query)
         
         # Extraer información adicional para análisis académico
         analysis = {
             'answer': result.get('answer', 'No se pudo generar respuesta'),
             'model_info': result.get('model_info', {}),
-            'intent_info': result.get('intent_info', {}),  # Nueva información de intención
+            'intent_info': result.get('intent_info', {}),
+            'expansion_info': result.get('expansion_info', {}),  # Nueva información de expansión
             'sources_used': len(result.get('context', [])),
             'query': query,
             'context_documents': []
