@@ -63,8 +63,6 @@ class Settings(BaseSettings):
     enable_smart_selection: bool = Field(default=True, env="ENABLE_SMART_SELECTION")
     complexity_threshold: float = Field(default=0.6, env="COMPLEXITY_THRESHOLD")
 
-    # ======= NUEVAS CONFIGURACIONES PARA INTENT DETECTION =======
-    
     # Intent Detection Configuration
     enable_intent_detection: bool = Field(default=True, env="ENABLE_INTENT_DETECTION")
     intent_confidence_threshold: float = Field(default=0.6, env="INTENT_CONFIDENCE_THRESHOLD")
@@ -105,6 +103,18 @@ class Settings(BaseSettings):
             "academic_verb": 0.7
         }
     )
+
+    # ======= NUEVAS CONFIGURACIONES PARA QUERY EXPANSION =======
+    
+    # Query Expansion Configuration
+    enable_query_expansion: bool = Field(default=True, env="ENABLE_QUERY_EXPANSION")
+    max_expansion_terms: int = Field(default=6, env="MAX_EXPANSION_TERMS")
+    expansion_strategy: str = Field(default="moderate", env="EXPANSION_STRATEGY")
+    expansion_max_processing_time_ms: int = Field(default=500, env="EXPANSION_MAX_PROCESSING_TIME_MS")
+    
+    # Query Expansion Display Options
+    show_expanded_terms: bool = Field(default=True, env="SHOW_EXPANDED_TERMS")
+    expansion_debug_mode: bool = Field(default=False, env="EXPANSION_DEBUG_MODE")
 
     # Logging
     log_level: str = Field(default="INFO", env="LOG_LEVEL")
