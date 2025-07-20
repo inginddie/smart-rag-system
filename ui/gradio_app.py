@@ -8,7 +8,7 @@ from config.settings import settings
 logger = setup_logger()
 
 class GradioRAGApp:
-    """Aplicación Gradio para el sistema RAG con selección inteligente de modelos"""
+    """Aplicación Gradio para el sistema RAG con selección inteligente de modelos y detección de intención académica"""
     
     def __init__(self):
         self.rag_service = RAGService()
@@ -19,38 +19,136 @@ class GradioRAGApp:
         try:
             if self.rag_service.initialize():
                 self.initialized = True
-                return "✅ Sistema RAG inicializado correctamente con selección inteligente de modelos"
+                return "✅ Sistema RAG inicializado correctamente con detección de intención académica habilitada"
             else:
                 return "⚠️ Sistema inicializado pero no se encontraron documentos para indexar"
         except Exception as e:
             logger.error(f"Error initializing service: {e}")
             return f"❌ Error al inicializar: {str(e)}"
     
-    def chat_response(self, message: str, history: List[Tuple[str, str]]) -> str:
-        """Maneja las respuestas del chat con selección inteligente de modelos"""
+    def _format_intent_info(self, intent_info: dict) -> str:
+        """Formatea la información de intención para mostrar al usuario"""
+        if not intent_info:
+            return ""
+        
+        intent_type = intent_info.get('detected_intent', 'unknown')
+        confidence = intent_info.get('confidence', 0)
+        specialized_prompt = intent_info.get('specialized_prompt_used', False)
+        processing_time = intent_info.get('processing_time_ms', 0)
+        
+        # Mapear tipos de intención a nombres amigables
+        intent_names = {
+            'definition': '📖 Definición Conceptual',
+            'comparison': '⚖️ Análisis Comparativo', 
+            'state_of_art': '🌟 Estado del Arte',
+            'gap_analysis': '🔍 Análisis de Gaps',
+            'unknown': '❓ Consulta General',
+            'error': '⚠️ Error de Clasificación'
+        }
+        
+        intent_name = intent_names.get(intent_type, f'❓ {intent_type}')
+        
+        # Crear mensaje informativo
+        info_parts = [f"**Tipo de consulta detectada:** {intent_name}"]
+        
+        if confidence > 0:
+            confidence_emoji = "🎯" if confidence >= 0.8 else "🎲" if confidence >= 0.6 else "❓"
+            info_parts.append(f"**Confianza:** {confidence_emoji} {confidence:.0%}")
+        
+        if specialized_prompt and intent_type not in ['unknown', 'error']:
+            info_parts.append("**Respuesta optimizada:** ✨ Usando template académico especializado")
+        
+        if processing_time > 0:
+            info_parts.append(f"**Tiempo de análisis:** ⚡ {processing_time:.1f}ms")
+        
+        return "\n".join(info_parts)
+    
+    def _format_model_info(self, model_info: dict) -> str:
+        """Formatea la información del modelo para mostrar al usuario"""
+        if not model_info:
+            return ""
+        
+        model_name = model_info.get('selected_model', 'unknown')
+        complexity_score = model_info.get('complexity_score', 0)
+        
+        # Mapear modelos a nombres amigables
+        model_names = {
+            'gpt-4o': '🧠 GPT-4o (Análisis Complejo)',
+            'gpt-4o-mini': '⚡ GPT-4o-mini (Respuesta Rápida)',
+            'gpt-3.5-turbo': '💨 GPT-3.5-turbo (Eficiente)'
+        }
+        
+        model_display = model_names.get(model_name, f'🤖 {model_name}')
+        
+        info_parts = [f"**Modelo seleccionado:** {model_display}"]
+        
+        if complexity_score > 0:
+            complexity_emoji = "🔥" if complexity_score >= 0.7 else "⚡" if complexity_score >= 0.4 else "💨"
+            info_parts.append(f"**Complejidad detectada:** {complexity_emoji} {complexity_score:.0%}")
+        
+        return "\n".join(info_parts)
+    
+    def chat_response(self, message: str, history: List[Tuple[str, str]]) -> Tuple[str, str]:
+        """
+        Maneja las respuestas del chat con información enriquecida de intención y modelo
+        
+        Returns:
+            Tuple[respuesta_principal, información_del_sistema]
+        """
         if not self.initialized:
-            return "❌ El sistema no está inicializado. Por favor inicialízalo primero."
+            return "❌ El sistema no está inicializado. Por favor inicialízalo primero.", ""
         
         if not message.strip():
-            return "Por favor, escribe una pregunta."
+            return "Por favor, escribe una pregunta.", ""
         
         try:
-            # Obtener respuesta con información del modelo
-            result = self.rag_service.query(message)
-            response = result['answer']
+            # Obtener respuesta completa con metadata
+            result = self.rag_service.query(message, include_sources=True)
             
-            # Agregar información del modelo usado (opcional, para debugging)
+            # Respuesta principal
+            main_response = result['answer']
+            
+            # Información del sistema (intent + model)
+            system_info_parts = []
+            
+            # Agregar información de intención si está disponible
+            intent_info = result.get('intent_info', {})
+            if intent_info:
+                intent_details = self._format_intent_info(intent_info)
+                if intent_details:
+                    system_info_parts.append("### 🎯 Análisis de Consulta")
+                    system_info_parts.append(intent_details)
+            
+            # Agregar información del modelo si está disponible
             model_info = result.get('model_info', {})
-            if model_info and settings.log_level == "DEBUG":
-                model_name = model_info.get('selected_model', 'unknown')
-                complexity = model_info.get('complexity_score', 0)
-                response += f"\n\n*[Procesado con {model_name}, complejidad: {complexity:.2f}]*"
+            if model_info:
+                model_details = self._format_model_info(model_info)
+                if model_details:
+                    system_info_parts.append("### 🤖 Selección de Modelo")
+                    system_info_parts.append(model_details)
             
-            return response
+            # Agregar información de fuentes si está disponible
+            sources = result.get('sources', [])
+            if sources:
+                system_info_parts.append("### 📚 Fuentes Consultadas")
+                source_list = []
+                for i, source in enumerate(sources[:3], 1):  # Mostrar máximo 3 fuentes
+                    file_name = source.get('metadata', {}).get('file_name', 'Documento desconocido')
+                    source_list.append(f"{i}. **{file_name}**")
+                system_info_parts.append("\n".join(source_list))
+                
+                if len(sources) > 3:
+                    system_info_parts.append(f"*... y {len(sources) - 3} fuentes adicionales*")
+            
+            # Combinar información del sistema
+            system_info = "\n\n".join(system_info_parts) if system_info_parts else ""
+            
+            return main_response, system_info
             
         except Exception as e:
             logger.error(f"Error in chat response: {e}")
-            return f"❌ Error al procesar la pregunta: {str(e)}"
+            error_msg = f"❌ Error al procesar la pregunta: {str(e)}"
+            return error_msg, ""
     
     def reindex_documents(self) -> str:
         """Reindexar documentos"""
@@ -72,102 +170,184 @@ class GradioRAGApp:
         lines = "\n".join(f"- {q}" for q in faqs)
         return f"**Preguntas frecuentes:**\n{lines}"
     
-    def get_total_documents(self) -> int:
-        """Obtiene el número total de documentos procesados"""
-        try:
-            return self.rag_service.get_total_documents_processed()
-        except Exception as e:
-            logger.error(f"Error obteniendo total de documentos: {e}")
-            return 0
-
     def create_interface(self) -> gr.Blocks:
-        """Crea la interfaz de Gradio actualizada"""
+        """Crea la interfaz de Gradio actualizada con intent feedback"""
         with gr.Blocks(
             title="Sistema RAG Avanzado - Investigación de Tesis",
             theme=gr.themes.Soft(),
+            css="""
+            .system-info {
+                background-color: #f8f9fa !important;
+                border: 1px solid #e9ecef !important;
+                border-radius: 8px !important;
+                padding: 12px !important;
+                margin-top: 8px !important;
+                font-size: 0.9em !important;
+                color: #2c3e50 !important;
+            }
+            .system-info h3 {
+                color: #34495e !important;
+                font-weight: bold !important;
+                margin-bottom: 8px !important;
+            }
+            .system-info p {
+                color: #2c3e50 !important;
+                margin-bottom: 4px !important;
+            }
+            .system-info strong {
+                color: #2c3e50 !important;
+                font-weight: bold !important;
+            }
+            .intent-indicator {
+                display: inline-block !important;
+                padding: 4px 8px !important;
+                border-radius: 12px !important;
+                font-size: 0.8em !important;
+                font-weight: bold !important;
+                margin-right: 8px !important;
+            }
+            .definition { 
+                background-color: #e3f2fd !important; 
+                color: #1565c0 !important; 
+            }
+            .comparison { 
+                background-color: #f3e5f5 !important; 
+                color: #7b1fa2 !important; 
+            }
+            .state_of_art { 
+                background-color: #e8f5e8 !important; 
+                color: #2e7d32 !important; 
+            }
+            .gap_analysis { 
+                background-color: #fff3e0 !important; 
+                color: #ef6c00 !important; 
+            }
+            /* Asegurar que el texto en el panel lateral sea visible */
+            .gr-column .gr-markdown {
+                color: #2c3e50 !important;
+            }
+            .gr-column .gr-markdown h3 {
+                color: #34495e !important;
+                font-weight: bold !important;
+            }
+            .gr-column .gr-markdown strong {
+                color: #2c3e50 !important;
+                font-weight: bold !important;
+            }
+            """
         ) as interface:
             
             gr.HTML("""
             <div style="text-align: center; margin-bottom: 2rem;">
-                <h1>🤖 Sistema RAG Avanzado para Investigación</h1>
-                <p>Especializado en IA para Historias de Usuario - Selección Inteligente de Modelos</p>
-                <p><small>Usa automáticamente GPT-4o para análisis complejos y GPT-4o-mini para consultas simples</small></p>
+                <h1>🤖 Sistema RAG Avanzado para Investigación Académica</h1>
+                <p>Especializado en IA para Historias de Usuario - Con Detección Inteligente de Intención</p>
+                <p><small>El sistema detecta automáticamente el tipo de consulta y optimiza la respuesta accordingly</small></p>
             </div>
             """)
             
             with gr.Tabs():
-                # Tab principal - Chat
-                with gr.TabItem("💬 Chat Académico"):
-                    gr.Markdown("### Asistente de Investigación")
-                    gr.Markdown("Haz preguntas académicas sobre tus documentos. El sistema seleccionará automáticamente el modelo más apropiado.")
-                    
-                    # ChatInterface actualizado para nueva versión de Gradio
-                    chatbot = gr.Chatbot(
-                        label="Conversación Académica",
-                        height=400,
-                        type='messages'  # Corregir warning de Gradio
-                    )
+                # Tab principal - Chat Académico
+                with gr.TabItem("💬 Chat Académico Inteligente"):
+                    gr.Markdown("### Asistente de Investigación con IA")
+                    gr.Markdown("""
+                    Haz preguntas académicas y observa cómo el sistema:
+                    - 🎯 **Detecta automáticamente** el tipo de consulta (definición, comparación, estado del arte, gaps)
+                    - 🤖 **Selecciona el modelo apropiado** (GPT-4o para análisis complejos, GPT-4o-mini para consultas simples)  
+                    - ✨ **Optimiza la respuesta** usando templates académicos especializados
+                    """)
                     
                     with gr.Row():
-                        msg = gr.Textbox(
-                            label="Tu pregunta de investigación",
-                            placeholder="Ej: Compara las metodologías de IA para historias de usuario...",
-                            scale=4
-                        )
-                        send_btn = gr.Button("Enviar", variant="primary", scale=1)
+                        with gr.Column(scale=2):
+                            # Área principal de chat
+                            chatbot = gr.Chatbot(
+                                label="Conversación Académica",
+                                height=500,
+                                type='messages',
+                                show_label=True
+                            )
+                            
+                            with gr.Row():
+                                msg = gr.Textbox(
+                                    label="Tu pregunta de investigación",
+                                    placeholder="Ej: Compare las metodologías de IA para historias de usuario...",
+                                    scale=4,
+                                    lines=2
+                                )
+                                send_btn = gr.Button("Enviar", variant="primary", scale=1)
+                            
+                            with gr.Row():
+                                clear_btn = gr.Button("🗑️ Limpiar Chat", variant="secondary")
+                        
+                        with gr.Column(scale=1):
+                            # Panel de información del sistema
+                            system_info_display = gr.Markdown(
+                                label="📊 Información del Sistema",
+                                value="*Envía una consulta para ver cómo el sistema analiza tu pregunta*",
+                                elem_classes=["system-info"],
+                                visible=True
+                            )
                     
-                    with gr.Row():
-                        clear_btn = gr.Button("🗑️ Limpiar Chat", variant="secondary")
-                    
-                    # Ejemplos académicos específicos para tu investigación
-                    gr.Examples(
-                        examples=[
-                            "¿Cuáles son las principales metodologías de IA para mejorar historias de usuario?",
-                            "Compara los enfoques de NLP vs Machine Learning en requirements engineering",
-                            "¿Qué gaps de investigación existen en la automatización de historias de usuario?",
-                            "Analiza las métricas de evaluación utilizadas en la literatura",
-                            "¿Qué técnicas de deep learning se han aplicado a requirements?",
-                            "Resume el estado del arte en IA para desarrollo ágil",
-                        ],
-                        inputs=msg
-                    )
+                    # Ejemplos académicos específicos organizados por tipo de intención
+                    with gr.Accordion("📋 Ejemplos por Tipo de Consulta", open=False):
+                        gr.Markdown("""
+                        **🔵 Definiciones Conceptuales:**
+                        - "¿Qué es Natural Language Processing en requirements engineering?"
+                        - "Define machine learning aplicado a historias de usuario"
+                        - "Explica el concepto de automated requirements generation"
+                        
+                        **🟣 Análisis Comparativos:**
+                        - "Compara supervised vs unsupervised learning para user stories"
+                        - "Diferencias entre rule-based y ML approaches en requirements"
+                        - "Ventajas y desventajas de BERT vs GPT para análisis de texto"
+                        
+                        **🟢 Estado del Arte:**
+                        - "Estado del arte en IA para automatización de requirements"
+                        - "Enfoques actuales en NLP para historias de usuario"
+                        - "Tendencias recientes en AI-assisted software development"
+                        
+                        **🟠 Análisis de Gaps:**
+                        - "¿Qué limitaciones tienen los métodos actuales de NLP para user stories?"
+                        - "Gaps de investigación en automated requirements engineering"
+                        - "¿Qué oportunidades existen para mejorar las técnicas actuales?"
+                        """)
 
+                    # FAQ dinámicas
                     faq_display = gr.Markdown(value=self.get_faq_markdown())
                     
                     def respond(message, chat_history):
                         if not message.strip():
-                            return chat_history, "", self.get_faq_markdown()
+                            return chat_history, "", self.get_faq_markdown(), ""
                         
-                        # Obtener respuesta del RAG
-                        bot_response = self.chat_response(message, chat_history)
+                        # Obtener respuesta y información del sistema
+                        bot_response, system_info = self.chat_response(message, chat_history)
                         
                         # Agregar al historial en formato correcto para Gradio
                         chat_history.append({"role": "user", "content": message})
                         chat_history.append({"role": "assistant", "content": bot_response})
 
-                        return chat_history, "", self.get_faq_markdown()
+                        return chat_history, "", self.get_faq_markdown(), system_info
                     
                     # Event handlers para el chat
                     send_btn.click(
                         respond,
                         inputs=[msg, chatbot],
-                        outputs=[chatbot, msg, faq_display]
+                        outputs=[chatbot, msg, faq_display, system_info_display]
                     )
                     
                     msg.submit(
                         respond,
                         inputs=[msg, chatbot],
-                        outputs=[chatbot, msg, faq_display]
+                        outputs=[chatbot, msg, faq_display, system_info_display]
                     )
                     
                     clear_btn.click(
-                        lambda: ([], "", self.get_faq_markdown()),
-                        outputs=[chatbot, msg, faq_display]
+                        lambda: ([], "", self.get_faq_markdown(), "*Envía una consulta para ver el análisis del sistema*"),
+                        outputs=[chatbot, msg, faq_display, system_info_display]
                     )
                 
                 # Tab de administración
-                with gr.TabItem("⚙️ Administración"):
-                    gr.Markdown("### Gestión del Sistema RAG")
+                with gr.TabItem("⚙️ Administración del Sistema"):
+                    gr.Markdown("### Gestión del Sistema RAG Inteligente")
                     
                     with gr.Row():
                         init_btn = gr.Button("🚀 Inicializar Sistema", variant="primary")
@@ -180,15 +360,20 @@ class GradioRAGApp:
                     )
                     
                     # Información del sistema
-                    gr.Markdown("### Configuración Actual")
+                    gr.Markdown("### Configuración del Sistema RAG Inteligente")
                     gr.Markdown(f"""
-                    **Selección Inteligente de Modelos:**
+                    **🧠 Detección de Intención Académica:**
+                    - 🎯 **Estado**: `{'Habilitada' if settings.enable_intent_detection else 'Deshabilitada'}`
+                    - 📊 **Umbral de confianza**: `{settings.intent_confidence_threshold}`
+                    - ⚡ **Tiempo máximo de procesamiento**: `{settings.intent_max_processing_time_ms}ms`
+                    
+                    **🤖 Selección Inteligente de Modelos:**
                     - 🧠 **Modelo para consultas complejas**: `{settings.complex_model}`
                     - ⚡ **Modelo para consultas simples**: `{settings.simple_model}`
                     - 🎯 **Umbral de complejidad**: `{settings.complexity_threshold}`
                     - 🔄 **Selección automática**: `{'Activada' if settings.enable_smart_selection else 'Desactivada'}`
                     
-                    **Configuración RAG:**
+                    **📚 Configuración RAG Base:**
                     - 📁 **Directorio de documentos**: `{settings.documents_path}`
                     - 🗃️ **Base de datos vectorial**: `{settings.vector_db_path}`
                     - 🔤 **Modelo de embeddings**: `{settings.embedding_model}`
@@ -197,75 +382,119 @@ class GradioRAGApp:
                     - 📖 **Documentos por consulta**: `{settings.max_documents}`
                     """)
                 
-                # Tab de ayuda académica
-                with gr.TabItem("📚 Guía de Investigación"):
+                # Tab de guía académica actualizada
+                with gr.TabItem("📚 Guía de Investigación Inteligente"):
                     gr.Markdown("""
-                    ## 🎓 Sistema RAG para Investigación de Tesis
+                    ## 🎓 Sistema RAG Inteligente para Investigación Académica
                     
-                    ### 🧠 Selección Inteligente de Modelos
+                    ### 🧠 Inteligencia Artificial Integrada
                     
-                    El sistema **selecciona automáticamente** el modelo más apropiado:
+                    Este sistema combina **dos niveles de IA** para optimizar tu experiencia de investigación:
                     
-                    **GPT-4o (Análisis Complejo)** se activa con:
-                    - 🔬 **Palabras académicas**: "analiza", "compara", "evalúa", "metodología"
-                    - 📊 **Análisis crítico**: "ventajas y desventajas", "limitaciones", "gaps"
-                    - 🎯 **Estado del arte**: "literatura", "síntesis", "framework"
-                    - 📝 **Investigación**: "paper", "estudio", "hallazgos"
+                    #### 🎯 **Nivel 1: Detección Automática de Intención**
+                    El sistema analiza tu consulta en **menos de 200ms** para determinar qué tipo de respuesta necesitas:
                     
-                    **GPT-4o-mini (Consultas Simples)** para:
-                    - ❓ **Definiciones**: "¿Qué es...?", "Define..."
-                    - 📋 **Listas**: "Lista las técnicas...", "Enumera..."
-                    - 🔍 **Búsquedas básicas**: "Encuentra...", "Busca..."
+                    - **📖 Definición Conceptual** → Estructura la respuesta con definición formal, contexto histórico y aplicaciones
+                    - **⚖️ Análisis Comparativo** → Organiza la información en tablas comparativas y análisis sistemático  
+                    - **🌟 Estado del Arte** → Presenta cronología, tendencias actuales y consenso académico
+                    - **🔍 Análisis de Gaps** → Identifica limitaciones, oportunidades y direcciones futuras
                     
-                    ### 🚀 Tipos de Consultas para tu Tesis
+                    #### 🤖 **Nivel 2: Selección Inteligente de Modelo**
+                    Basado en la complejidad de tu consulta, elige automáticamente:
                     
-                    #### **Estado del Arte** (→ GPT-4o)
-                    - "Analiza el estado del arte en IA para historias de usuario"
-                    - "¿Cuáles son las metodologías principales en la literatura?"
-                    - "Sintetiza los enfoques de NLP en requirements engineering"
+                    - **🧠 GPT-4o** para análisis académicos complejos, comparaciones metodológicas y síntesis profundas
+                    - **⚡ GPT-4o-mini** para definiciones claras, consultas directas y respuestas rápidas
                     
-                    #### **Comparaciones Metodológicas** (→ GPT-4o)
-                    - "Compara los frameworks de Chen et al. vs Smith et al."
-                    - "¿Cuáles son las ventajas y desventajas de cada enfoque?"
-                    - "Evalúa críticamente las técnicas de machine learning aplicadas"
+                    ### 🚀 Cómo Aprovechar al Máximo el Sistema
                     
-                    #### **Gaps de Investigación** (→ GPT-4o)
-                    - "¿Qué limitaciones identifican los estudios actuales?"
-                    - "¿Dónde están los gaps en la automatización de requirements?"
-                    - "¿Qué direcciones futuras sugiere la literatura?"
+                    #### **Para Investigación de Tesis sobre IA y User Stories:**
                     
-                    #### **Consultas Específicas** (→ GPT-4o-mini)
-                    - "¿Qué es una historia de usuario?"
-                    - "Lista las técnicas de NLP mencionadas"
-                    - "Define requirements engineering"
+                    **🔍 Exploración Inicial:**
+                    1. "Estado del arte en IA para historias de usuario" (activará análisis cronológico)
+                    2. "¿Qué es automated requirements generation?" (activará definición estructurada)
                     
-                    ### 💡 Consejos para Mejores Resultados
+                    **📊 Análisis Comparativo:**
+                    1. "Compara NLP vs Machine Learning para requirements analysis"
+                    2. "Ventajas y desventajas de rule-based vs deep learning approaches"
                     
-                    1. **Sé específico** en tus preguntas académicas
-                    2. **Usa terminología técnica** para activar análisis profundo
-                    3. **Pregunta por comparaciones** para obtener síntesis complejas
-                    4. **Solicita gaps** para identificar oportunidades de investigación
-                    5. **Pide citas específicas** mencionando autores cuando sea posible
+                    **🎯 Identificación de Oportunidades:**
+                    1. "¿Qué limitaciones tienen las técnicas actuales de NLP para user stories?"
+                    2. "Gaps de investigación en automated requirements engineering"
                     
-                    ### 📖 Preparación de Documentos
+                    ### 💡 Indicadores Visuales del Sistema
                     
-                    1. **Organiza tus 159 PDFs** por categorías temáticas
-                    2. **Procesa por lotes** (20-30 papers a la vez)
-                    3. **Verifica nombres** descriptivos de archivos
-                    4. **Inicia con papers fundamentales** antes de casos específicos
+                    Observa el **panel lateral** durante tus consultas para ver:
+                    
+                    - **🎯 Tipo de consulta detectada** con nivel de confianza
+                    - **🤖 Modelo seleccionado** y razón de la selección  
+                    - **✨ Optimización aplicada** (si usa template especializado)
+                    - **📚 Fuentes consultadas** para tu respuesta específica
+                    
+                    ### 🎓 Resultados de Investigación Optimizados
+                    
+                    **Para Definiciones:**
+                    - Estructura académica formal con contexto histórico
+                    - Referencias a autores principales y papers fundamentales
+                    - Conexiones con conceptos relacionados
+                    
+                    **Para Comparaciones:**
+                    - Matrices comparativas sistemáticas
+                    - Análisis de ventajas/desventajas equilibrado
+                    - Recomendaciones basadas en contexto de uso
+                    
+                    **Para Estado del Arte:**
+                    - Evolución temporal de enfoques
+                    - Identificación de tendencias emergentes  
+                    - Análisis de consenso vs controversias
+                    
+                    **Para Análisis de Gaps:**
+                    - Categorización de limitaciones por tipo
+                    - Oportunidades específicas de investigación
+                    - Conexión con trabajos futuros sugeridos
+                    
+                    ### 🔬 Optimización para tu Dominio Específico
+                    
+                    El sistema está **pre-optimizado** para investigación en:
+                    - ✅ Inteligencia Artificial aplicada a Software Engineering
+                    - ✅ Natural Language Processing para Requirements  
+                    - ✅ Machine Learning en User Story Analysis
+                    - ✅ Automated Software Development Tools
+                    - ✅ AI-Assisted Development Methodologies
+                    
+                    ### 📈 Consejos para Consultas de Alta Calidad
+                    
+                    **🎯 Sé específico en tu intención:**
+                    - ❌ "machine learning" 
+                    - ✅ "¿Qué técnicas de machine learning se usan para analizar historias de usuario?"
+                    
+                    **🔗 Conecta conceptos:**
+                    - ❌ "NLP tools"
+                    - ✅ "Compare herramientas de NLP para extracción automática de requirements"
+                    
+                    **📊 Solicita análisis estructurado:**
+                    - ❌ "research gaps"
+                    - ✅ "¿Qué limitaciones identifican los estudios actuales en automated user story generation?"
+                    
+                    ### 🚀 El Futuro de tu Investigación
+                    
+                    Con este sistema inteligente, puedes:
+                    - **⚡ Acelerar** tu revisión de literatura 5-10x
+                    - **🎯 Identificar** gaps de investigación automáticamente  
+                    - **📊 Comparar** metodologías de manera sistemática
+                    - **🔍 Descubrir** conexiones entre diferentes líneas de investigación
+                    - **📈 Optimizar** la calidad académica de tu análisis
                     """)
-                
-                # Tab de estado del sistema
-                with gr.TabItem("📊 Estado del Sistema"):
-                    gr.Markdown("### Resumen del Estado Actual del Sistema RAG")
-                    document_count_display = gr.Textbox(label="Número total de documentos procesados", interactive=False)
-                    refresh_btn = gr.Button("Actualizar")
-
-                    refresh_btn.click(
-                        fn=self.get_total_documents,
-                        inputs=None,
-                        outputs=document_count_display
-                    )
+            
+            # Event handlers
+            init_btn.click(
+                fn=self.initialize_service,
+                outputs=status_output
+            )
+            
+            reindex_btn.click(
+                fn=self.reindex_documents,
+                outputs=status_output
+            )
         
         return interface
     
@@ -282,26 +511,5 @@ class GradioRAGApp:
             **kwargs
         }
         
-        logger.info(f"Launching RAG app with smart model selection on port {launch_kwargs['server_port']}")
+        logger.info(f"Launching RAG app with intelligent intent detection and model selection on port {launch_kwargs['server_port']}")
         interface.launch(**launch_kwargs)
-
-import React from 'react';
-import DocumentCountPanel from './components/DocumentCountPanel';
-
-// Función simulada para obtener el número de documentos procesados
-const fetchDocumentCount = async () => {
-  // Aquí se debe llamar al backend real para obtener el dato
-  return 123; // Valor simulado
-};
-
-const App = () => {
-  return (
-    <div>
-      <h1>Sistema RAG - Panel Principal</h1>
-      <DocumentCountPanel fetchDocumentCount={fetchDocumentCount} />
-      {/* Otros componentes y funcionalidades del frontend */}
-    </div>
-  );
-};
-
-export default App;
