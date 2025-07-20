@@ -280,6 +280,10 @@ Responde con rigor académico, precisión científica y enfoque específico en l
                     query = input_dict.get("input", "")
                     return self.get_relevant_documents(query)
                 
+                def with_config(self, config=None):
+                    """Interface requerida por LangChain para configuración"""
+                    return self
+                
                 @property
                 def config(self):
                     """Config property requerida por LangChain"""
