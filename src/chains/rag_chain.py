@@ -20,6 +20,9 @@ from src.utils.tracing import trace_llm
 from src.utils.intent_detector import intent_detector, IntentType
 from src.chains.prompt_templates import prompt_template_selector
 
+# ======= IMPORTACIÓN PARA MANEJO DE ASYNCIO =======
+import asyncio
+
 logger = setup_logger()
 
 class RAGChain:
@@ -163,40 +166,79 @@ Responde con rigor académico, precisión científica y enfoque específico en l
             logger.error(f"Error creating RAG chain: {e}")
             raise ChainException(f"Failed to create RAG chain: {e}")
     
+    # ======= NUEVO MÉTODO SÍNCRONO PARA INTENT DETECTION =======
+    def _detect_intent_sync(self, query: str) -> Dict[str, Any]:
+        """
+        Método síncrono wrapper para detección de intención.
+        
+        Maneja correctamente el asyncio sin causar conflictos con event loops existentes.
+        """
+        try:
+            # Verificar si ya estamos en un event loop
+            try:
+                loop = asyncio.get_running_loop()
+                # Si hay un loop corriendo, crear una nueva tarea
+                future = asyncio.create_task(intent_detector.detect_intent(query))
+                
+                # Usar run_until_complete del loop actual pero de manera segura
+                # Esto no es la práctica óptima pero funciona para compatibilidad
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future_result = executor.submit(asyncio.run, intent_detector.detect_intent(query))
+                    intent_result = future_result.result(timeout=5)  # 5 segundos timeout
+                    
+            except RuntimeError:
+                # No hay event loop corriendo, usar asyncio.run normalmente
+                intent_result = asyncio.run(intent_detector.detect_intent(query))
+            
+            return {
+                'detected_intent': intent_result.intent_type.value,
+                'confidence': intent_result.confidence,
+                'reasoning': intent_result.reasoning,
+                'processing_time_ms': intent_result.processing_time_ms,
+                'fallback_used': intent_result.fallback_used
+            }
+            
+        except Exception as e:
+            logger.error(f"Error in intent detection: {e}")
+            return {
+                'detected_intent': 'error',
+                'confidence': 0.0,
+                'reasoning': f'Intent detection failed: {str(e)}',
+                'processing_time_ms': 0.0,
+                'fallback_used': True
+            }
+    
     @trace_llm
     def invoke(self, query: str) -> Dict[str, Any]:
         """Ejecuta la cadena RAG con selección inteligente de modelo y detección de intención"""
         try:
             logger.debug(f"Processing query with RAG Chain: {query[:100]}...")
             
-            # ======= NUEVA LÓGICA DE INTENT DETECTION =======
+            # ======= NUEVA LÓGICA DE INTENT DETECTION CORREGIDA =======
             intent_info = None
             specialized_prompt = None
             
             if self.intent_detection_enabled:
                 try:
-                    # Detectar intención de la consulta
-                    import asyncio
-                    intent_result = asyncio.run(intent_detector.detect_intent(query))
-                    
-                    # Crear información de intención para incluir en respuesta
-                    intent_info = {
-                        'detected_intent': intent_result.intent_type.value,
-                        'confidence': intent_result.confidence,
-                        'reasoning': intent_result.reasoning,
-                        'processing_time_ms': intent_result.processing_time_ms,
-                        'fallback_used': intent_result.fallback_used
-                    }
+                    # Usar método síncrono corregido para intent detection
+                    intent_info = self._detect_intent_sync(query)
                     
                     # Seleccionar prompt especializado basado en intención
-                    if intent_result.intent_type != IntentType.UNKNOWN and intent_result.confidence >= settings.intent_confidence_threshold:
+                    if (intent_info['detected_intent'] != 'unknown' and 
+                        intent_info['detected_intent'] != 'error' and 
+                        intent_info['confidence'] >= settings.intent_confidence_threshold):
+                        
+                        intent_type = IntentType(intent_info['detected_intent'])
                         specialized_prompt = prompt_template_selector.select_template(
-                            intent_result.intent_type, 
+                            intent_type, 
                             self.system_prompt
                         )
-                        logger.info(f"Using specialized prompt for intent: {intent_result.intent_type.value} (confidence: {intent_result.confidence:.2f})")
+                        intent_info['specialized_prompt_used'] = True
+                        logger.info(f"Using specialized prompt for intent: {intent_info['detected_intent']} (confidence: {intent_info['confidence']:.2f})")
                     else:
-                        logger.info(f"Using default prompt - intent confidence too low: {intent_result.confidence:.2f}")
+                        intent_info['specialized_prompt_used'] = False
+                        logger.info(f"Using default prompt - intent confidence too low or error: {intent_info['confidence']:.2f}")
                         
                 except Exception as e:
                     logger.error(f"Error in intent detection: {e}, falling back to default behavior")
@@ -205,7 +247,8 @@ Responde con rigor académico, precisión científica y enfoque específico en l
                         'confidence': 0.0,
                         'reasoning': f'Intent detection failed: {str(e)}',
                         'processing_time_ms': 0.0,
-                        'fallback_used': True
+                        'fallback_used': True,
+                        'specialized_prompt_used': False
                     }
             
             # ======= LÓGICA EXISTENTE DE MODEL SELECTION (MANTENIDA) =======
@@ -235,9 +278,6 @@ Responde con rigor académico, precisión científica y enfoque específico en l
             # Nueva información de detección de intención
             if intent_info:
                 result['intent_info'] = intent_info
-                
-                # Agregar indicador si se usó prompt especializado
-                result['intent_info']['specialized_prompt_used'] = specialized_prompt is not None
             
             logger.info(f"Query processed successfully with {selected_model}" + 
                        (f" using {intent_info['detected_intent']} intent" if intent_info else ""))
