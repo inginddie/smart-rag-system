@@ -18,12 +18,16 @@ from src.utils.logger import setup_logger
 from src.utils.exceptions import VectorStoreException
 from src.utils.metrics import record_latency
 from src.utils.tracing import get_current_tracer, trace_retrieval
+
+# ======= NUEVA IMPORTACIÓN PARA QUERY EXPANSION =======
+from src.utils.query_expander import query_expander
+
 import time
 
 logger = setup_logger()
 
 class VectorStoreManager:
-    """Maneja la base de datos vectorial"""
+    """Maneja la base de datos vectorial con query expansion"""
     
     def __init__(self, persist_directory: Optional[str] = None):
         self.persist_directory = persist_directory or settings.vector_db_path
@@ -275,9 +279,10 @@ class VectorStoreManager:
             if tracer and span:
                 tracer.end_span(span, "success")
     
+    # ======= MÉTODO ACTUALIZADO CON QUERY EXPANSION =======
     @trace_retrieval
-    def similarity_search(self, query: str, k: int = 5):
-        """Búsqueda por similitud"""
+    def similarity_search(self, query: str, k: int = 5, intent_type=None):
+        """Búsqueda por similitud con expansión automática de consulta"""
         try:
             vs = self.vector_store
 
@@ -290,12 +295,56 @@ class VectorStoreManager:
             except Exception:
                 pass
 
-            results = vs.similarity_search(query, k=k)
-            logger.debug(f"Found {len(results)} similar documents for query")
+            # ======= NUEVA LÓGICA DE QUERY EXPANSION =======
+            expanded_query = query  # Default fallback
+            expansion_info = None
+            
+            if settings.enable_query_expansion:
+                try:
+                    expansion_result = query_expander.expand_query(query, intent_type)
+                    expanded_query = expansion_result.final_query
+                    expansion_info = {
+                        'original_query': expansion_result.original_query,
+                        'expanded_terms': expansion_result.expanded_terms,
+                        'expansion_count': expansion_result.expansion_count,
+                        'processing_time_ms': expansion_result.processing_time_ms
+                    }
+                    
+                    if expansion_result.expansion_count > 0:
+                        logger.info(f"Query expanded: {expansion_result.expansion_count} terms added")
+                        logger.debug(f"Expanded query: {expanded_query}")
+                    else:
+                        logger.debug("No query expansion applied")
+                        
+                except Exception as e:
+                    logger.error(f"Error in query expansion: {e}, using original query")
+                    # Fallback: usar query original si expansion falla
+
+            # Realizar búsqueda con query expandida (o original si falló expansion)
+            results = vs.similarity_search(expanded_query, k=k)
+            
+            # Agregar metadata de expansion a los resultados si está disponible
+            if expansion_info:
+                for result in results:
+                    if hasattr(result, 'metadata'):
+                        result.metadata['query_expansion'] = expansion_info
+
+            logger.debug(f"Found {len(results)} similar documents for {'expanded' if expansion_info and expansion_info['expansion_count'] > 0 else 'original'} query")
             return results
 
         except Exception as e:
             logger.error(f"Error in similarity search: {e}")
+            raise VectorStoreException(f"Similarity search failed: {e}")
+    
+    def similarity_search_without_expansion(self, query: str, k: int = 5):
+        """Búsqueda por similitud SIN expansión (para comparaciones)"""
+        try:
+            vs = self.vector_store
+            results = vs.similarity_search(query, k=k)
+            logger.debug(f"Found {len(results)} similar documents for original query (no expansion)")
+            return results
+        except Exception as e:
+            logger.error(f"Error in similarity search without expansion: {e}")
             raise VectorStoreException(f"Similarity search failed: {e}")
     
     def get_retriever(self, search_kwargs: Optional[dict] = None):
@@ -322,7 +371,8 @@ class VectorStoreManager:
                 'document_count': count,
                 'persist_directory': self.persist_directory,
                 'collection_name': self._collection_name,
-                'status': 'ready'
+                'status': 'ready',
+                'query_expansion_enabled': settings.enable_query_expansion
             }
         except Exception as e:
             logger.error(f"Error getting collection info: {e}")
@@ -330,5 +380,6 @@ class VectorStoreManager:
                 'document_count': 0,
                 'persist_directory': self.persist_directory,
                 'collection_name': self._collection_name,
-                'status': f'error: {str(e)}'
+                'status': f'error: {str(e)}',
+                'query_expansion_enabled': settings.enable_query_expansion
             }
