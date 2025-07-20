@@ -63,7 +63,23 @@ class GradioRAGApp:
         
         return "\n".join(info_parts)
     
-    def _format_model_info(self, model_info: dict) -> str:
+    def _format_expansion_info(self, expansion_info: dict) -> str:
+        """Formatea la información de expansión de consulta para mostrar al usuario"""
+        if not expansion_info or expansion_info.get('expansion_count', 0) == 0:
+            return ""
+        
+        expanded_terms = expansion_info.get('expanded_terms', [])
+        processing_time = expansion_info.get('processing_time_ms', 0)
+        
+        info_parts = [f"**Términos expandidos:** 🔍 {', '.join(expanded_terms[:5])}"]
+        
+        if len(expanded_terms) > 5:
+            info_parts.append(f"*... y {len(expanded_terms) - 5} términos más*")
+        
+        if processing_time > 0:
+            info_parts.append(f"**Tiempo de expansión:** ⚡ {processing_time:.1f}ms")
+        
+        return "\n".join(info_parts)
         """Formatea la información del modelo para mostrar al usuario"""
         if not model_info:
             return ""
@@ -108,7 +124,7 @@ class GradioRAGApp:
             # Respuesta principal
             main_response = result['answer']
             
-            # Información del sistema (intent + model)
+            # Información del sistema (intent + model + expansion)
             system_info_parts = []
             
             # Agregar información de intención si está disponible
@@ -118,6 +134,14 @@ class GradioRAGApp:
                 if intent_details:
                     system_info_parts.append("### 🎯 Análisis de Consulta")
                     system_info_parts.append(intent_details)
+            
+            # Agregar información de expansión si está disponible
+            expansion_info = result.get('expansion_info', {})
+            if expansion_info:
+                expansion_details = self._format_expansion_info(expansion_info)
+                if expansion_details:
+                    system_info_parts.append("### 🔍 Expansión de Consulta")
+                    system_info_parts.append(expansion_details)
             
             # Agregar información del modelo si está disponible
             model_info = result.get('model_info', {})
@@ -252,6 +276,7 @@ class GradioRAGApp:
                     gr.Markdown("""
                     Haz preguntas académicas y observa cómo el sistema:
                     - 🎯 **Detecta automáticamente** el tipo de consulta (definición, comparación, estado del arte, gaps)
+                    - 🔍 **Expande tu consulta** con sinónimos académicos relevantes  
                     - 🤖 **Selecciona el modelo apropiado** (GPT-4o para análisis complejos, GPT-4o-mini para consultas simples)  
                     - ✨ **Optimiza la respuesta** usando templates académicos especializados
                     """)
@@ -366,6 +391,12 @@ class GradioRAGApp:
                     - 🎯 **Estado**: `{'Habilitada' if settings.enable_intent_detection else 'Deshabilitada'}`
                     - 📊 **Umbral de confianza**: `{settings.intent_confidence_threshold}`
                     - ⚡ **Tiempo máximo de procesamiento**: `{settings.intent_max_processing_time_ms}ms`
+                    
+                    **🔍 Expansión Inteligente de Consultas:**
+                    - 🎯 **Estado**: `{'Habilitada' if settings.enable_query_expansion else 'Deshabilitada'}`
+                    - 📊 **Máximo términos expandidos**: `{settings.max_expansion_terms}`
+                    - 🎨 **Estrategia de expansión**: `{settings.expansion_strategy}`
+                    - ⚡ **Tiempo máximo de procesamiento**: `{settings.expansion_max_processing_time_ms}ms`
                     
                     **🤖 Selección Inteligente de Modelos:**
                     - 🧠 **Modelo para consultas complejas**: `{settings.complex_model}`
