@@ -274,6 +274,16 @@ Responde con rigor académico, precisión científica y enfoque específico en l
                         k=settings.max_documents,
                         intent_type=self.intent_type
                     )
+                
+                def invoke(self, input_dict):
+                    """Interface requerida por LangChain"""
+                    query = input_dict.get("input", "")
+                    return self.get_relevant_documents(query)
+                
+                @property
+                def config(self):
+                    """Config property requerida por LangChain"""
+                    return {"k": settings.max_documents}
             
             intent_aware_retriever = IntentAwareRetriever(self.vector_store_manager, intent_type)
             
