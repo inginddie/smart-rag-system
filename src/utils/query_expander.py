@@ -28,6 +28,7 @@ class ExpansionResult:
     final_query: str
     processing_time_ms: float
     expansion_count: int
+    strategy_used: str = "moderate"
 
 
 class ExpansionStrategy(Enum):
@@ -129,26 +130,6 @@ class QueryExpander:
         self.expansion_strategy = getattr(settings, 'expansion_strategy', 'moderate')
         
     def expand_query(self, query: str, intent_type: Optional[IntentType] = None) -> ExpansionResult:
-        """
-        Expande una consulta académica manteniendo coherencia semántica
-        
-        Args:
-            query: Consulta original del usuario
-            intent_type: Tipo de intención detectada para expansión contextual
-            
-        Returns:
-            ExpansionResult con consulta expandida y metadata
-        """
-        if not self.expansion_enabled:
-            return ExpansionResult(
-                original_query=query,
-                expanded_terms=[],
-                protected_terms=[],
-                final_query=query,
-                processing_time_ms=0.0,
-                expansion_count=0
-            )
-            
         start_time = time.perf_counter()
         
         try:
@@ -177,7 +158,8 @@ class QueryExpander:
                 protected_terms=protected_terms,
                 final_query=final_query,
                 processing_time_ms=processing_time,
-                expansion_count=len(filtered_expansions)
+                expansion_count=len(filtered_expansions),
+                strategy_used=self.expansion_strategy
             )
             
             logger.debug(f"Query expansion completed: {len(filtered_expansions)} terms added in {processing_time:.1f}ms")
@@ -192,7 +174,8 @@ class QueryExpander:
                 protected_terms=[],
                 final_query=query,
                 processing_time_ms=(time.perf_counter() - start_time) * 1000,
-                expansion_count=0
+                expansion_count=0,
+                strategy_used=self.expansion_strategy
             )
     
     def _extract_protected_terms(self, query: str) -> List[str]:

@@ -16,17 +16,18 @@ from src.utils.logger import setup_logger
 from src.utils.exceptions import ChainException
 from src.utils.tracing import trace_llm
 
-# ======= NUEVAS IMPORTACIONES PARA INTENT DETECTION =======
+# Importaciones para intent detection y query expansion
 from src.utils.intent_detector import intent_detector, IntentType
 from src.chains.prompt_templates import prompt_template_selector
+from src.utils.query_expander import query_expander
 
-# ======= IMPORTACIÓN PARA MANEJO DE ASYNCIO =======
+# Manejo de asyncio
 import asyncio
 
 logger = setup_logger()
 
 class RAGChain:
-    """Cadena RAG con selección inteligente de modelos, detección de intención académica y expansión de consultas"""
+    """Cadena RAG con selección inteligente de modelos, detección de intención y expansión de consulta"""
     
     def __init__(self, 
                  system_prompt: Optional[str] = None,
@@ -35,19 +36,22 @@ class RAGChain:
         self.temperature = temperature
         self.vector_store_manager = VectorStoreManager()
         
-        # Importar ModelSelector solo cuando se necesite para evitar dependencias circulares
+        # Model selector lazy loading para evitar dependencias circulares
         self._model_selector = None
         
         # Prompt especializado para investigación de tesis
         self.system_prompt = system_prompt or self._get_default_system_prompt()
         
-        # Cache de modelos para evitar reinicialización
+        # Cache de modelos y cadenas para evitar reinicialización
         self._model_cache = {}
         self._chain_cache = {}
         
-        # ======= NUEVOS COMPONENTES PARA INTENT DETECTION =======
+        # Configuración de funcionalidades
         self.intent_detection_enabled = settings.enable_intent_detection
+        self.query_expansion_enabled = settings.enable_query_expansion
+        
         logger.info(f"RAG Chain initialized with intent detection: {'enabled' if self.intent_detection_enabled else 'disabled'}")
+        logger.info(f"RAG Chain initialized with query expansion: {'enabled' if self.query_expansion_enabled else 'disabled'}")
     
     @property
     def model_selector(self):
@@ -71,31 +75,6 @@ INSTRUCCIONES ESPECÍFICAS:
 7. Distingue claramente entre: teoría, implementación práctica, y validación empírica
 8. Proporciona síntesis comparativas cuando se soliciten múltiples enfoques
 
-TIPOS DE CONSULTAS QUE PUEDES RESOLVER:
-- Estado del arte en IA para historias de usuario
-- Metodologías y frameworks propuestos
-- Herramientas y técnicas específicas (NLP, ML, etc.)
-- Métricas de evaluación utilizadas
-- Casos de estudio y validaciones empíricas
-- Gaps de investigación identificados
-- Comparación entre diferentes enfoques
-- Fundamentos teóricos y conceptuales
-
-FORMATO DE RESPUESTA:
-- Proporciona respuestas estructuradas y académicamente rigurosas
-- Incluye citas específicas: (Autor, Año) o [Título del paper]
-- Organiza la información en secciones lógicas cuando sea apropiado
-- Destaca controversias o debates en el área
-- Sugiere conexiones entre diferentes líneas de investigación
-- Si hay limitaciones en el contexto, menciona qué información adicional sería útil
-
-DIRECTRICES ACADÉMICAS:
-- Mantén rigor científico en todas las respuestas
-- Diferencia entre hechos establecidos, hipótesis y especulaciones
-- Identifica cuando hay consenso o divergencia en la literatura
-- Proporciona contexto histórico cuando sea relevante
-- Señala implicaciones prácticas para el desarrollo de software
-
 CONTEXTO ACADÉMICO:
 {context}
 
@@ -104,9 +83,7 @@ Responde con rigor académico, precisión científica y enfoque específico en l
     def _get_or_create_model(self, model_name: str):
         """Obtiene o crea un modelo LLM con cache"""
         if ChatOpenAI is None:
-            raise ChainException(
-                "ChatOpenAI dependency is required but not installed"
-            )
+            raise ChainException("ChatOpenAI dependency is required but not installed")
 
         if model_name not in self._model_cache:
             try:
@@ -124,7 +101,6 @@ Responde con rigor académico, precisión científica y enfoque específico en l
     
     def _create_chain_for_model(self, model_name: str, specialized_prompt: Optional[str] = None):
         """Crea una cadena RAG para un modelo específico con prompt personalizado"""
-        # ======= MODIFICADO PARA SOPORTAR PROMPTS ESPECIALIZADOS =======
         cache_key = f"{model_name}_{hash(specialized_prompt) if specialized_prompt else 'default'}"
         
         if cache_key not in self._chain_cache:
@@ -133,9 +109,11 @@ Responde con rigor académico, precisión científica y enfoque específico en l
                     raise ChainException("LangChain dependencies are required but not installed")
 
                 llm = self._get_or_create_model(model_name)
+                
+                # Usar el retriever estándar de LangChain - sin modificaciones personalizadas
                 retriever = self.vector_store_manager.get_retriever()
                 
-                # Usar prompt especializado si está disponible, sino usar el default
+                # Usar prompt especializado si está disponible
                 prompt_to_use = specialized_prompt or self.system_prompt
                 
                 prompt_template = ChatPromptTemplate.from_messages([
@@ -157,7 +135,6 @@ Responde con rigor académico, precisión científica y enfoque específico en l
     def create_chain(self):
         """Crea la cadena RAG con modelo por defecto"""
         try:
-            # Crear cadena con modelo por defecto para compatibilidad
             default_model = settings.default_model
             self._create_chain_for_model(default_model)
             logger.info("RAG chain created successfully with smart model selection, intent detection and query expansion capabilities")
@@ -166,29 +143,17 @@ Responde con rigor académico, precisión científica y enfoque específico en l
             logger.error(f"Error creating RAG chain: {e}")
             raise ChainException(f"Failed to create RAG chain: {e}")
     
-    # ======= NUEVO MÉTODO SÍNCRONO PARA INTENT DETECTION =======
     def _detect_intent_sync(self, query: str) -> Dict[str, Any]:
-        """
-        Método síncrono wrapper para detección de intención.
-        
-        Maneja correctamente el asyncio sin causar conflictos con event loops existentes.
-        """
+        """Método síncrono wrapper para detección de intención"""
         try:
-            # Verificar si ya estamos en un event loop
             try:
                 loop = asyncio.get_running_loop()
-                # Si hay un loop corriendo, crear una nueva tarea
-                future = asyncio.create_task(intent_detector.detect_intent(query))
-                
-                # Usar run_until_complete del loop actual pero de manera segura
-                # Esto no es la práctica óptima pero funciona para compatibilidad
                 import concurrent.futures
                 with concurrent.futures.ThreadPoolExecutor() as executor:
                     future_result = executor.submit(asyncio.run, intent_detector.detect_intent(query))
-                    intent_result = future_result.result(timeout=5)  # 5 segundos timeout
+                    intent_result = future_result.result(timeout=5)
                     
             except RuntimeError:
-                # No hay event loop corriendo, usar asyncio.run normalmente
                 intent_result = asyncio.run(intent_detector.detect_intent(query))
             
             return {
@@ -209,13 +174,53 @@ Responde con rigor académico, precisión científica y enfoque específico en l
                 'fallback_used': True
             }
     
+    def _expand_query_if_enabled(self, query: str, intent_type: Optional[IntentType] = None) -> Dict[str, Any]:
+        """Expande la consulta si está habilitado, considerando el tipo de intención"""
+        if not self.query_expansion_enabled:
+            return {
+                'original_query': query,
+                'final_query': query,
+                'expanded_terms': [],
+                'expansion_count': 0,
+                'strategy_used': 'disabled',
+                'processing_time_ms': 0.0
+            }
+        
+        try:
+            # Expandir consulta usando el intent type para contexto
+            expansion_result = query_expander.expand_query(query, intent_type=intent_type)
+            
+            logger.info(f"Query expansion: {expansion_result.expansion_count} terms added "
+                       f"(strategy: {expansion_result.strategy_used})")
+            
+            return {
+                'original_query': expansion_result.original_query,
+                'final_query': expansion_result.final_query,
+                'expanded_terms': expansion_result.expanded_terms,
+                'expansion_count': expansion_result.expansion_count,
+                'strategy_used': expansion_result.strategy_used,
+                'processing_time_ms': expansion_result.processing_time_ms
+            }
+            
+        except Exception as e:
+            logger.error(f"Error in query expansion: {e}")
+            return {
+                'original_query': query,
+                'final_query': query,
+                'expanded_terms': [],
+                'expansion_count': 0,
+                'strategy_used': 'error',
+                'processing_time_ms': 0.0,
+                'error': str(e)
+            }
+    
     @trace_llm
     def invoke(self, query: str) -> Dict[str, Any]:
         """Ejecuta la cadena RAG con selección inteligente de modelo, detección de intención y expansión de consulta"""
         try:
             logger.debug(f"Processing query with RAG Chain: {query[:100]}...")
             
-            # ======= LÓGICA DE INTENT DETECTION =======
+            # Fase 1: Detección de intención
             intent_info = None
             specialized_prompt = None
             intent_type = None
@@ -250,68 +255,28 @@ Responde con rigor académico, precisión científica y enfoque específico en l
                         'specialized_prompt_used': False
                     }
             
-            # ======= LÓGICA DE MODEL SELECTION =======
+            # Fase 2: Expansión de consulta
+            expansion_info = self._expand_query_if_enabled(query, intent_type)
+            final_query = expansion_info['final_query']
+            
+            # Fase 3: Selección de modelo
             if settings.enable_smart_selection:
-                selected_model, complexity_score, reasoning = self.model_selector.select_model(query)
+                # Usar la consulta expandida para la selección de modelo
+                selected_model, complexity_score, reasoning = self.model_selector.select_model(final_query)
             else:
                 selected_model = settings.default_model
                 complexity_score = 0.5
                 reasoning = "Smart selection disabled"
             
-            # ======= CREAR CADENA CON RETRIEVER QUE SOPORTA EXPANSION =======
-            # Modificar retriever para pasar intent_type a similarity_search
-            retriever = self.vector_store_manager.get_retriever()
+            # Fase 4: Crear/obtener cadena y ejecutar
+            chain = self._create_chain_for_model(selected_model, specialized_prompt)
             
-            # Wrapper para pasar intent_type al vector store
-            class IntentAwareRetriever:
-                def __init__(self, vector_store_manager, intent_type=None):
-                    self.vector_store_manager = vector_store_manager
-                    self.intent_type = intent_type
-                
-                def get_relevant_documents(self, query):
-                    return self.vector_store_manager.similarity_search(
-                        query, 
-                        k=settings.max_documents,
-                        intent_type=self.intent_type
-                    )
-                
-                def invoke(self, input_dict):
-                    """Interface requerida por LangChain"""
-                    query = input_dict.get("input", "")
-                    return self.get_relevant_documents(query)
-                
-                def with_config(self, config=None, **kwargs):
-                    """Interface requerida por LangChain para configuración"""
-                    return self
-                
-                @property
-                def config(self):
-                    """Config property requerida por LangChain"""
-                    return {"k": settings.max_documents}
+            logger.info(f"Processing query with {selected_model}: {final_query[:50]}...")
             
-            intent_aware_retriever = IntentAwareRetriever(self.vector_store_manager, intent_type)
+            # Ejecutar consulta con la query expandida
+            result = chain.invoke({"input": final_query})
             
-            # Crear cadena con retriever que soporta expansion
-            if None in (ChatOpenAI, create_retrieval_chain, create_stuff_documents_chain, ChatPromptTemplate):
-                raise ChainException("LangChain dependencies are required but not installed")
-
-            llm = self._get_or_create_model(selected_model)
-            prompt_to_use = specialized_prompt or self.system_prompt
-            
-            prompt_template = ChatPromptTemplate.from_messages([
-                ("system", prompt_to_use),
-                ("human", "{input}"),
-            ])
-            
-            document_chain = create_stuff_documents_chain(llm=llm, prompt=prompt_template)
-            chain = create_retrieval_chain(intent_aware_retriever, document_chain)
-            
-            logger.info(f"Processing query with {selected_model}: {query[:50]}...")
-            
-            # Ejecutar consulta
-            result = chain.invoke({"input": query})
-            
-            # ======= AGREGAR INFORMACIÓN EXTENDIDA AL RESULTADO =======
+            # Fase 5: Agregar metadata completa al resultado
             result['model_info'] = {
                 'selected_model': selected_model,
                 'complexity_score': complexity_score,
@@ -321,17 +286,12 @@ Responde con rigor académico, precisión científica y enfoque específico en l
             if intent_info:
                 result['intent_info'] = intent_info
             
-            # Extraer información de query expansion de los documentos
-            expansion_info = None
-            if result.get('context') and len(result['context']) > 0:
-                first_doc = result['context'][0]
-                if hasattr(first_doc, 'metadata') and 'query_expansion' in first_doc.metadata:
-                    expansion_info = first_doc.metadata['query_expansion']
-                    result['expansion_info'] = expansion_info
+            result['expansion_info'] = expansion_info
             
             logger.info(f"Query processed successfully with {selected_model}" + 
                        (f" using {intent_info['detected_intent']} intent" if intent_info else "") +
-                       (f" with {expansion_info['expansion_count']} expanded terms" if expansion_info else ""))
+                       (f" with {expansion_info['expansion_count']} expanded terms" if expansion_info['expansion_count'] > 0 else ""))
+            
             return result
             
         except Exception as e:
@@ -347,7 +307,6 @@ Responde con rigor académico, precisión científica y enfoque específico en l
         """Obtiene análisis académico completo incluyendo información del modelo, intención y expansión"""
         result = self.invoke(query)
         
-        # Extraer información adicional para análisis académico
         analysis = {
             'answer': result.get('answer', 'No se pudo generar respuesta'),
             'model_info': result.get('model_info', {}),
@@ -358,7 +317,6 @@ Responde con rigor académico, precisión científica y enfoque específico en l
             'context_documents': []
         }
         
-        # Agregar información de contexto para referencias
         for i, doc in enumerate(result.get('context', [])):
             doc_info = {
                 'document_index': i + 1,
