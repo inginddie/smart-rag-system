@@ -23,7 +23,7 @@ load_dotenv()
 
 
 class Settings(BaseSettings):
-    """Configuración centralizada con selección inteligente de modelos"""
+    """Configuración centralizada con Query Advisor y Analytics"""
 
     # OpenAI Configuration
     openai_api_key: str = Field(default="", env="OPENAI_API_KEY")
@@ -104,8 +104,6 @@ class Settings(BaseSettings):
         }
     )
 
-    # ======= NUEVAS CONFIGURACIONES PARA QUERY EXPANSION =======
-    
     # Query Expansion Configuration
     enable_query_expansion: bool = Field(default=True, env="ENABLE_QUERY_EXPANSION")
     max_expansion_terms: int = Field(default=6, env="MAX_EXPANSION_TERMS")
@@ -115,6 +113,60 @@ class Settings(BaseSettings):
     # Query Expansion Display Options
     show_expanded_terms: bool = Field(default=True, env="SHOW_EXPANDED_TERMS")
     expansion_debug_mode: bool = Field(default=False, env="EXPANSION_DEBUG_MODE")
+
+    # ======= QUERY ADVISOR CONFIGURATION =======
+    
+    # Query Advisor Core Settings
+    enable_query_advisor: bool = Field(default=True, env="ENABLE_QUERY_ADVISOR")
+    advisor_effectiveness_threshold: float = Field(default=0.7, env="ADVISOR_EFFECTIVENESS_THRESHOLD")
+    advisor_max_suggestions: int = Field(default=3, env="ADVISOR_MAX_SUGGESTIONS")
+    advisor_max_tips: int = Field(default=2, env="ADVISOR_MAX_TIPS")
+    
+    # Effectiveness Scoring Weights
+    advisor_scoring_weights: Dict[str, float] = Field(
+        default={
+            "intent_confidence": 0.3,
+            "context_quality": 0.4,
+            "query_specificity": 0.2,
+            "expansion_effectiveness": 0.1
+        }
+    )
+    
+    # Suggestion Generation Settings
+    advisor_suggestion_priority_weights: Dict[str, float] = Field(
+        default={
+            "specificity_improvements": 0.9,
+            "context_additions": 0.8,
+            "structure_fixes": 0.7,
+            "terminology_enhancements": 0.6
+        }
+    )
+    
+    # Usage Analytics Configuration
+    enable_usage_analytics: bool = Field(default=True, env="ENABLE_USAGE_ANALYTICS")
+    analytics_retention_days: int = Field(default=30, env="ANALYTICS_RETENTION_DAYS")
+    analytics_storage_path: str = Field(default="./data/usage_analytics.json", env="ANALYTICS_STORAGE_PATH")
+    analytics_auto_save_interval: int = Field(default=10, env="ANALYTICS_AUTO_SAVE_INTERVAL")
+    
+    # Pattern Recognition Settings
+    analytics_min_samples_for_pattern: int = Field(default=3, env="ANALYTICS_MIN_SAMPLES_FOR_PATTERN")
+    analytics_success_threshold: float = Field(default=0.7, env="ANALYTICS_SUCCESS_THRESHOLD")
+    
+    # Recommendation Engine Settings
+    enable_improvement_recommendations: bool = Field(default=True, env="ENABLE_IMPROVEMENT_RECOMMENDATIONS")
+    recommendation_effectiveness_threshold: float = Field(default=0.6, env="RECOMMENDATION_EFFECTIVENESS_THRESHOLD")
+    recommendation_adoption_threshold: float = Field(default=0.4, env="RECOMMENDATION_ADOPTION_THRESHOLD")
+    
+    # UI Display Settings for Query Advisor
+    show_effectiveness_score: bool = Field(default=True, env="SHOW_EFFECTIVENESS_SCORE")
+    show_suggestion_reasoning: bool = Field(default=True, env="SHOW_SUGGESTION_REASONING")
+    show_contextual_tips: bool = Field(default=True, env="SHOW_CONTEXTUAL_TIPS")
+    show_analytics_summary: bool = Field(default=True, env="SHOW_ANALYTICS_SUMMARY")
+    
+    # Advanced Query Advisor Features
+    enable_learning_from_feedback: bool = Field(default=True, env="ENABLE_LEARNING_FROM_FEEDBACK")
+    enable_personalized_suggestions: bool = Field(default=False, env="ENABLE_PERSONALIZED_SUGGESTIONS")
+    advisor_debug_mode: bool = Field(default=False, env="ADVISOR_DEBUG_MODE")
 
     # Logging
     log_level: str = Field(default="INFO", env="LOG_LEVEL")
@@ -130,12 +182,100 @@ class Settings(BaseSettings):
     chunk_sla_ms: int = Field(default=1000, env="CHUNK_SLA_MS")
     search_sla_ms: int = Field(default=1000, env="SEARCH_SLA_MS")
     synthesize_sla_ms: int = Field(default=2000, env="SYNTHESIZE_SLA_MS")
+    
+    # Query Advisor SLA Settings
+    advisor_analysis_sla_ms: int = Field(default=300, env="ADVISOR_ANALYSIS_SLA_MS")
+    advisor_suggestion_sla_ms: int = Field(default=200, env="ADVISOR_SUGGESTION_SLA_MS")
+    analytics_processing_sla_ms: int = Field(default=100, env="ANALYTICS_PROCESSING_SLA_MS")
 
     class Config:
         env_file = ".env"
         case_sensitive = False
-        # Permitir campos extra para compatibilidad
         extra = "ignore"
+
+    # ======= QUERY ADVISOR UTILITY METHODS =======
+    
+    def get_advisor_config(self) -> Dict:
+        """Obtiene configuración específica del Query Advisor"""
+        return {
+            "enabled": self.enable_query_advisor,
+            "effectiveness_threshold": self.advisor_effectiveness_threshold,
+            "max_suggestions": self.advisor_max_suggestions,
+            "max_tips": self.advisor_max_tips,
+            "scoring_weights": self.advisor_scoring_weights,
+            "suggestion_weights": self.advisor_suggestion_priority_weights,
+            "debug_mode": self.advisor_debug_mode
+        }
+    
+    def get_analytics_config(self) -> Dict:
+        """Obtiene configuración específica de Analytics"""
+        return {
+            "enabled": self.enable_usage_analytics,
+            "retention_days": self.analytics_retention_days,
+            "storage_path": self.analytics_storage_path,
+            "auto_save_interval": self.analytics_auto_save_interval,
+            "min_samples_for_pattern": self.analytics_min_samples_for_pattern,
+            "success_threshold": self.analytics_success_threshold
+        }
+    
+    def get_ui_display_config(self) -> Dict:
+        """Obtiene configuración de display UI para Query Advisor"""
+        return {
+            "show_effectiveness_score": self.show_effectiveness_score,
+            "show_suggestion_reasoning": self.show_suggestion_reasoning,
+            "show_contextual_tips": self.show_contextual_tips,
+            "show_analytics_summary": self.show_analytics_summary
+        }
+    
+    def is_feature_enabled(self, feature: str) -> bool:
+        """Verifica si una feature específica está habilitada"""
+        feature_flags = {
+            "query_advisor": self.enable_query_advisor,
+            "usage_analytics": self.enable_usage_analytics,
+            "improvement_recommendations": self.enable_improvement_recommendations,
+            "learning_from_feedback": self.enable_learning_from_feedback,
+            "personalized_suggestions": self.enable_personalized_suggestions,
+            "intent_detection": self.enable_intent_detection,
+            "query_expansion": self.enable_query_expansion,
+            "smart_selection": self.enable_smart_selection
+        }
+        
+        return feature_flags.get(feature, False)
+    
+    def get_sla_config(self) -> Dict:
+        """Obtiene todas las configuraciones SLA incluyendo Query Advisor"""
+        return {
+            "ingest_ms": self.ingest_sla_ms,
+            "embed_ms": self.embed_sla_ms,
+            "chunk_ms": self.chunk_sla_ms,
+            "search_ms": self.search_sla_ms,
+            "synthesize_ms": self.synthesize_sla_ms,
+            "advisor_analysis_ms": self.advisor_analysis_sla_ms,
+            "advisor_suggestion_ms": self.advisor_suggestion_sla_ms,
+            "analytics_processing_ms": self.analytics_processing_sla_ms
+        }
+    
+    def validate_advisor_settings(self) -> List[str]:
+        """Valida configuraciones del Query Advisor y retorna warnings"""
+        warnings = []
+        
+        if not 0.0 <= self.advisor_effectiveness_threshold <= 1.0:
+            warnings.append("advisor_effectiveness_threshold should be between 0.0 and 1.0")
+        
+        if not 0.0 <= self.analytics_success_threshold <= 1.0:
+            warnings.append("analytics_success_threshold should be between 0.0 and 1.0")
+        
+        total_weight = sum(self.advisor_scoring_weights.values())
+        if not 0.9 <= total_weight <= 1.1:
+            warnings.append(f"advisor_scoring_weights should sum to ~1.0, currently: {total_weight}")
+        
+        if self.advisor_analysis_sla_ms < 50:
+            warnings.append("advisor_analysis_sla_ms too low, may cause frequent SLA breaches")
+        
+        if self.analytics_retention_days < 1:
+            warnings.append("analytics_retention_days should be at least 1")
+        
+        return warnings
 
 
 # Instancia global de configuración
