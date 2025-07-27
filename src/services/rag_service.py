@@ -1,4 +1,9 @@
 # -*- coding: utf-8 -*-
+"""
+Enhanced RAG Service with Query Advisor Integration
+MODIFICATION of existing src/services/rag_service.py
+"""
+
 from typing import List, Dict, Any, Optional
 from src.chains.rag_chain import RAGChain
 from src.storage.vector_store import VectorStoreManager
@@ -8,16 +13,26 @@ from src.utils.faq_manager import FAQManager
 from src.utils.metrics import start_metrics_server
 from src.utils.quality_validator import academic_quality_validator
 
+# ======= NEW IMPORTS FOR HU4 =======
+from src.utils.query_advisor import query_advisor
+from src.utils.usage_analytics import usage_analytics
+from src.utils.intent_detector import IntentType
+
 logger = setup_logger()
 
 class RAGService:
-    """Servicio RAG con templates académicos y validación de calidad"""
+    """Servicio RAG con Query Advisor y Usage Analytics integrados"""
     
     def __init__(self):
         self.vector_store_manager = VectorStoreManager()
         self.rag_chain = RAGChain()
         self.faq_manager = FAQManager()
         self.quality_validator = academic_quality_validator
+        
+        # ======= NEW COMPONENTS =======
+        self.query_advisor = query_advisor
+        self.usage_analytics = usage_analytics
+        
         self._initialized = False
     
     def initialize(self, force_reindex: bool = False) -> bool:
@@ -39,7 +54,7 @@ class RAGService:
             
             self.rag_chain.create_chain()
             self._initialized = True
-            logger.info("Enhanced RAG service initialized with academic templates and quality validation")
+            logger.info("Enhanced RAG service initialized with Query Advisor and Analytics")
             start_metrics_server()
             return True
             
@@ -65,13 +80,17 @@ class RAGService:
             return True
     
     def query(self, question: str, include_sources: bool = False, 
-              validate_quality: bool = True) -> Dict[str, Any]:
-        """Procesa consulta con templates y validación de calidad"""
+              validate_quality: bool = True, include_advisor: bool = True) -> Dict[str, Any]:
+        """
+        Procesa consulta con Query Advisor y Analytics integrados
+        
+        ENHANCED METHOD - includes advisor suggestions and analytics tracking
+        """
         if not self._initialized:
             raise RAGException("RAG service not initialized. Call initialize() first.")
         
         try:
-            # Usar enhanced RAG chain
+            # ======= CORE RAG PROCESSING =======
             result = self.rag_chain.invoke(question)
             
             # Registrar pregunta para FAQs
@@ -86,7 +105,91 @@ class RAGService:
                 'template_info': result.get('template_info', {})
             }
             
-            # Validación de calidad si está habilitada
+            # ======= QUERY ADVISOR INTEGRATION =======
+            if include_advisor:
+                try:
+                    # Extract intent result for advisor
+                    intent_result = None
+                    intent_info = result.get('intent_info', {})
+                    if intent_info:
+                        intent_result = intent_info.get('intent_result_object')
+                    
+                    # Analyze query effectiveness
+                    effectiveness = self.query_advisor.analyze_query_effectiveness(
+                        query=question,
+                        result=result,
+                        intent_result=intent_result
+                    )
+                    
+                    # Track analytics BEFORE generating suggestions
+                    intent_type = intent_result.intent_type if intent_result else IntentType.UNKNOWN
+                    processing_time = (
+                        intent_info.get('processing_time_ms', 0) +
+                        result.get('template_info', {}).get('processing_time_ms', 0) +
+                        result.get('expansion_info', {}).get('processing_time_ms', 0)
+                    )
+                    
+                    suggestion_shown = effectiveness.score < self.query_advisor.effectiveness_threshold
+                    
+                    self.usage_analytics.track_query_outcome(
+                        query=question,
+                        intent_type=intent_type,
+                        effectiveness_score=effectiveness.score,
+                        processing_time_ms=processing_time,
+                        suggestion_shown=suggestion_shown
+                    )
+                    
+                    # Generate suggestions if needed
+                    suggestions = []
+                    contextual_tips = []
+                    
+                    if effectiveness.score < self.query_advisor.effectiveness_threshold:
+                        suggestions = self.query_advisor.generate_suggestions(
+                            query=question,
+                            intent_result=intent_result,
+                            effectiveness=effectiveness
+                        )
+                        
+                        complexity_score = result.get('model_info', {}).get('complexity_score', 0.5)
+                        contextual_tips = self.query_advisor.get_contextual_tips(
+                            intent_type=intent_type,
+                            complexity_score=complexity_score
+                        )
+                    
+                    # Add advisor info to response
+                    response['advisor_info'] = {
+                        'effectiveness_score': effectiveness.score,
+                        'effectiveness_reasoning': effectiveness.reasoning,
+                        'improvement_areas': effectiveness.improvement_areas,
+                        'suggestions': [
+                            {
+                                'reformulated_query': s.reformulated_query,
+                                'reason': s.reason,
+                                'expected_improvement': s.expected_improvement,
+                                'priority': s.priority
+                            } for s in suggestions
+                        ],
+                        'contextual_tips': [
+                            {
+                                'tip_text': t.tip_text,
+                                'category': t.category,
+                                'example': t.example
+                            } for t in contextual_tips
+                        ],
+                        'suggestion_shown': suggestion_shown
+                    }
+                    
+                    logger.debug(f"Query advisor analysis: effectiveness={effectiveness.score:.3f}, suggestions={len(suggestions)}")
+                    
+                except Exception as e:
+                    logger.error(f"Error in query advisor integration: {e}")
+                    # Don't fail the entire query for advisor errors
+                    response['advisor_info'] = {
+                        'error': 'Advisor analysis failed',
+                        'suggestion_shown': False
+                    }
+            
+            # ======= QUALITY VALIDATION =======
             if validate_quality and self._should_validate_quality(result):
                 try:
                     quality_score = self._validate_response_quality(result, question)
@@ -95,7 +198,7 @@ class RAGService:
                     logger.warning(f"Quality validation failed: {e}")
                     response['quality_info'] = {"error": "Quality validation failed"}
             
-            # Agregar fuentes si se solicita
+            # ======= SOURCES =======
             if include_sources:
                 sources = []
                 for doc in result.get('context', []):
@@ -111,6 +214,36 @@ class RAGService:
         except Exception as e:
             logger.error(f"Error processing query: {e}")
             raise RAGException(f"Failed to process query: {e}")
+    
+    def track_suggestion_adoption(self, original_query: str, adopted: bool = True) -> None:
+        """
+        NEW METHOD - Track when user adopts/rejects a suggestion
+        """
+        try:
+            self.usage_analytics.track_suggestion_adoption(original_query, adopted)
+            logger.debug(f"Suggestion {'adopted' if adopted else 'rejected'} for query: {original_query[:50]}...")
+        except Exception as e:
+            logger.error(f"Error tracking suggestion adoption: {e}")
+    
+    def get_analytics_summary(self) -> Dict[str, Any]:
+        """
+        NEW METHOD - Get analytics summary for admin dashboard
+        """
+        try:
+            return self.usage_analytics.get_analytics_summary()
+        except Exception as e:
+            logger.error(f"Error getting analytics summary: {e}")
+            return {"status": "error", "message": str(e)}
+    
+    def get_improvement_recommendations(self) -> List[Dict]:
+        """
+        NEW METHOD - Get improvement recommendations based on analytics
+        """
+        try:
+            return self.usage_analytics.get_improvement_recommendations()
+        except Exception as e:
+            logger.error(f"Error getting improvement recommendations: {e}")
+            return []
     
     def _should_validate_quality(self, result: Dict[str, Any]) -> bool:
         """Determina si se debe validar calidad de la respuesta"""
@@ -206,9 +339,11 @@ class RAGService:
             raise RAGException(f"Failed to reindex documents: {e}")
     
     def get_status(self) -> Dict[str, Any]:
-        """Obtiene el estado del servicio"""
+        """Obtiene el estado del servicio con información del advisor"""
         try:
             collection_info = self.vector_store_manager.get_collection_info()
+            analytics_summary = self.get_analytics_summary()
+            
             return {
                 'initialized': self._initialized,
                 'collection_status': collection_info.get('status', 'unknown'),
@@ -220,7 +355,14 @@ class RAGService:
                     False,
                 ),
                 'template_support': True,
-                'quality_validation': True
+                'quality_validation': True,
+                
+                # ======= NEW STATUS INFO =======
+                'query_advisor_enabled': True,
+                'usage_analytics_enabled': True,
+                'total_queries_processed': analytics_summary.get('total_queries', 0),
+                'avg_effectiveness': analytics_summary.get('avg_effectiveness', 0),
+                'suggestion_adoption_rate': analytics_summary.get('suggestion_adoption_rate', 0)
             }
         except Exception as e:
             return {
@@ -229,12 +371,22 @@ class RAGService:
             }
     
     def get_detailed_analysis(self, question: str) -> Dict[str, Any]:
-        """Obtiene análisis académico completo con validación de calidad"""
+        """Obtiene análisis académico completo con información del advisor"""
         if not self._initialized:
             raise RAGException("RAG service not initialized. Call initialize() first.")
         
         try:
-            return self.rag_chain.get_academic_analysis(question)
+            # Get full analysis with advisor info
+            full_result = self.query(question, include_sources=True, include_advisor=True)
+            
+            # Enhance with detailed academic analysis
+            academic_analysis = self.rag_chain.get_academic_analysis(question)
+            
+            # Combine both
+            full_result.update(academic_analysis)
+            
+            return full_result
+            
         except Exception as e:
             logger.error(f"Error getting detailed analysis: {e}")
             raise RAGException(f"Failed to get detailed analysis: {e}")

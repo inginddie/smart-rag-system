@@ -1,4 +1,9 @@
 # -*- coding: utf-8 -*-
+"""
+Enhanced Gradio App with Query Advisor Integration
+MODIFICATION of existing ui/gradio_app.py
+"""
+
 import gradio as gr
 from gradio.themes.soft import Soft
 from typing import List, Tuple
@@ -10,20 +15,17 @@ logger = setup_logger()
 
 class GradioRAGApp:
     """
-    Aplicación Gradio para el sistema RAG con funcionalidades avanzadas:
+    Aplicación Gradio para el sistema RAG con Query Advisor integrado:
     - Detección inteligente de intención académica
     - Expansión automática de consultas
     - Selección dinámica de modelos
+    - **NUEVO: Query Advisor con sugerencias y analytics**
     - Feedback visual completo para transparencia del sistema
     """
     
     def __init__(self):
         """
-        Inicializa la aplicación con el servicio RAG.
-        
-        Aquí establecemos la conexión con el motor principal del sistema RAG,
-        pero mantenemos el estado de inicialización separado para permitir
-        una configuración step-by-step del sistema desde la interfaz.
+        Inicializa la aplicación con el servicio RAG enhanced.
         """
         self.rag_service = RAGService()
         self.initialized = False
@@ -31,10 +33,6 @@ class GradioRAGApp:
     def initialize_service(self) -> str:
         """
         Inicializa el servicio RAG y proporciona feedback detallado al usuario.
-        
-        Este método es crucial porque valida que todos los componentes del sistema
-        estén funcionando correctamente antes de permitir consultas. Es como hacer
-        un "health check" completo del sistema.
         """
         try:
             if self.rag_service.initialize():
@@ -43,6 +41,8 @@ class GradioRAGApp:
                        "🎯 Detección de intención académica\n" + \
                        "🔍 Expansión automática de consultas\n" + \
                        "🤖 Selección inteligente de modelos\n" + \
+                       "💡 Query Advisor con sugerencias inteligentes\n" + \
+                       "📊 Analytics de uso y aprendizaje\n" + \
                        "📚 Base de documentos indexada y lista"
             else:
                 return "⚠️ Sistema inicializado pero no se encontraron documentos para indexar"
@@ -51,14 +51,7 @@ class GradioRAGApp:
             return f"❌ Error al inicializar: {str(e)}"
     
     def _format_intent_info(self, intent_info: dict) -> str:
-        """
-        Formatea la información de detección de intención para presentación al usuario.
-        
-        Esta función es esencial para la transparencia del sistema. Cuando un investigador
-        hace una pregunta, necesita entender cómo el sistema interpretó su consulta para
-        poder evaluar la relevancia de la respuesta y, si es necesario, reformular
-        su pregunta de manera más específica.
-        """
+        """Formatea la información de detección de intención para presentación al usuario."""
         if not intent_info:
             return ""
         
@@ -67,9 +60,6 @@ class GradioRAGApp:
         specialized_prompt = intent_info.get('specialized_prompt_used', False)
         processing_time = intent_info.get('processing_time_ms', 0)
         
-        # Mapear tipos de intención a nombres comprensibles para el usuario
-        # Estos nombres están diseñados para que investigadores sin conocimiento técnico
-        # puedan entender inmediatamente qué tipo de respuesta pueden esperar
         intent_names = {
             'definition': '📖 Definición Conceptual',
             'comparison': '⚖️ Análisis Comparativo', 
@@ -81,11 +71,9 @@ class GradioRAGApp:
         
         intent_name = intent_names.get(intent_type, f'❓ {intent_type}')
         
-        # Construir mensaje informativo con diferentes niveles de detalle
         info_parts = [f"**Tipo de consulta detectada:** {intent_name}"]
         
         if confidence > 0:
-            # Los emojis ayudan a transmitir rápidamente el nivel de confianza
             confidence_emoji = "🎯" if confidence >= 0.8 else "🎲" if confidence >= 0.6 else "❓"
             info_parts.append(f"**Confianza:** {confidence_emoji} {confidence:.0%}")
         
@@ -98,15 +86,7 @@ class GradioRAGApp:
         return "\n".join(info_parts)
     
     def _format_expansion_info(self, expansion_info: dict) -> str:
-        """
-        Formatea la información de expansión de consulta para mostrar al usuario.
-        
-        La expansión de consultas puede ser un concepto abstracto para muchos usuarios.
-        Esta función hace visible ese proceso, mostrando exactamente qué términos
-        adicionales está usando el sistema para buscar información relevante.
-        Esto ayuda a los investigadores a entender por qué ciertos documentos
-        aparecieron en los resultados incluso si no contenían exactamente sus términos originales.
-        """
+        """Formatea la información de expansión de consulta para mostrar al usuario."""
         if not expansion_info or expansion_info.get('expansion_count', 0) == 0:
             return ""
         
@@ -134,15 +114,7 @@ class GradioRAGApp:
         return "\n".join(info_parts)
     
     def _format_model_info(self, model_info: dict) -> str:
-        """
-        Formatea la información del modelo seleccionado para mostrar al usuario.
-        
-        La selección automática de modelos es una de las características más sofisticadas
-        del sistema. Esta función hace transparente esa decisión, permitiendo que los
-        usuarios entiendan por qué el sistema eligió un modelo particular para su consulta.
-        Esto es especialmente importante en contextos académicos donde la reproducibilidad
-        y la comprensión del proceso son fundamentales.
-        """
+        """Formatea la información del modelo seleccionado para mostrar al usuario."""
         if not model_info:
             return ""
         
@@ -150,8 +122,6 @@ class GradioRAGApp:
         complexity_score = model_info.get('complexity_score', 0)
         reasoning = model_info.get('reasoning', '')
         
-        # Mapear modelos técnicos a nombres que los usuarios puedan entender fácilmente
-        # Incluimos información sobre las fortalezas de cada modelo
         model_names = {
             'gpt-4o': '🧠 GPT-4o (Análisis Académico Profundo)',
             'gpt-4o-mini': '⚡ GPT-4o-mini (Respuesta Rápida y Eficiente)',
@@ -163,29 +133,98 @@ class GradioRAGApp:
         info_parts = [f"**Modelo seleccionado:** {model_display}"]
         
         if complexity_score > 0:
-            # Visual indicators para el nivel de complejidad detectado
             complexity_emoji = "🔥" if complexity_score >= 0.7 else "⚡" if complexity_score >= 0.4 else "💨"
             info_parts.append(f"**Complejidad detectada:** {complexity_emoji} {complexity_score:.0%}")
         
-        # Agregar reasoning si está disponible y es informativo
-        if reasoning and len(reasoning) < 100:  # Solo mostrar si es conciso
+        if reasoning and len(reasoning) < 100:
             info_parts.append(f"**Razón:** {reasoning}")
         
         return "\n".join(info_parts)
     
+    def _format_advisor_info(self, advisor_info: dict) -> str:
+        """
+        NUEVO: Formatea información del Query Advisor
+        """
+        if not advisor_info or advisor_info.get('error'):
+            return ""
+        
+        effectiveness_score = advisor_info.get('effectiveness_score', 0)
+        suggestions = advisor_info.get('suggestions', [])
+        tips = advisor_info.get('contextual_tips', [])
+        suggestion_shown = advisor_info.get('suggestion_shown', False)
+        
+        info_parts = []
+        
+        # Effectiveness score con visual indicator
+        if effectiveness_score > 0:
+            score_emoji = "🎯" if effectiveness_score >= 0.8 else "⚡" if effectiveness_score >= 0.6 else "🔧"
+            score_text = "Excelente" if effectiveness_score >= 0.8 else "Buena" if effectiveness_score >= 0.6 else "Mejorable"
+            info_parts.append(f"**Efectividad de consulta:** {score_emoji} {score_text} ({effectiveness_score:.1%})")
+        
+        # Suggestions si las hay
+        if suggestions:
+            info_parts.append("**💡 Sugerencias de mejora:**")
+            for i, suggestion in enumerate(suggestions[:2], 1):  # Max 2 suggestions
+                priority_emoji = "🔥" if suggestion.get('priority', 3) == 1 else "⚡"
+                info_parts.append(f"   {priority_emoji} *{suggestion.get('reason', 'Mejora sugerida')}*")
+                
+                # Show reformulated query if not too long
+                reformulated = suggestion.get('reformulated_query', '')
+                if len(reformulated) < 100:
+                    info_parts.append(f"      → \"{reformulated}\"")
+        
+        # Contextual tips
+        if tips:
+            info_parts.append("**💭 Tips contextuales:**")
+            for tip in tips[:1]:  # Show only first tip
+                info_parts.append(f"   📝 {tip.get('tip_text', '')}")
+                example = tip.get('example', '')
+                if example and len(example) < 80:
+                    info_parts.append(f"      *Ejemplo: {example}*")
+        
+        return "\n".join(info_parts)
+    
+    def _format_analytics_summary(self) -> str:
+        """
+        NUEVO: Genera resumen de analytics para mostrar en UI
+        """
+        try:
+            summary = self.rag_service.get_analytics_summary()
+            
+            if summary.get('status') in ['no_data', 'error']:
+                return "_No hay datos de analytics disponibles aún._"
+            
+            total_queries = summary.get('total_queries', 0)
+            avg_effectiveness = summary.get('avg_effectiveness', 0)
+            adoption_rate = summary.get('suggestion_adoption_rate', 0)
+            
+            info_parts = [
+                f"**📊 Analytics del Sistema:**",
+                f"• Total consultas procesadas: **{total_queries}**",
+                f"• Efectividad promedio: **{avg_effectiveness:.1%}**",
+                f"• Tasa adopción sugerencias: **{adoption_rate:.1%}**"
+            ]
+            
+            # Intent-specific stats
+            intent_stats = summary.get('intent_stats', {})
+            if intent_stats:
+                info_parts.append("**Por tipo de consulta:**")
+                for intent, stats in list(intent_stats.items())[:3]:  # Top 3
+                    success_rate = stats.get('success_rate', 0)
+                    query_count = stats.get('query_count', 0)
+                    info_parts.append(f"• {intent}: {success_rate:.1%} éxito ({query_count} consultas)")
+            
+            return "\n".join(info_parts)
+            
+        except Exception as e:
+            logger.error(f"Error generating analytics summary: {e}")
+            return "_Error al generar resumen de analytics._"
+    
     def chat_response(self, message: str, history: List[Tuple[str, str]]) -> Tuple[str, str]:
         """
-        Procesa las consultas del usuario y genera respuestas con información enriquecida.
+        Procesa las consultas del usuario con Query Advisor integrado.
         
-        Esta es la función central que orquesta todo el pipeline RAG avanzado:
-        1. Valida el estado del sistema
-        2. Procesa la consulta a través del pipeline completo
-        3. Extrae y formatea toda la metadata del proceso
-        4. Presenta tanto la respuesta como la información del sistema
-        
-        El retorno de una tupla permite separar la respuesta principal (que es lo que
-        el usuario busca) de la información del sistema (que proporciona transparencia
-        sobre cómo se generó esa respuesta).
+        ENHANCED: Ahora incluye information del Query Advisor en el panel lateral
         """
         if not self.initialized:
             return "❌ El sistema no está inicializado. Por favor inicialízalo primero.", ""
@@ -194,17 +233,24 @@ class GradioRAGApp:
             return "Por favor, escribe una pregunta académica.", ""
         
         try:
-            # Obtener respuesta completa con toda la metadata del pipeline
-            result = self.rag_service.query(message, include_sources=True)
+            # Obtener respuesta completa con Query Advisor habilitado
+            result = self.rag_service.query(message, include_sources=True, include_advisor=True)
             
             # La respuesta principal es lo que el usuario realmente quiere leer
             main_response = result['answer']
             
             # Construir información del sistema de manera modular
-            # Cada sección proporciona transparencia sobre una parte diferente del proceso
             system_info_parts = []
             
-            # Sección 1: Análisis de la consulta (detección de intención)
+            # Sección 1: Query Advisor (NUEVO - PRIORITARIO)
+            advisor_info = result.get('advisor_info', {})
+            if advisor_info and not advisor_info.get('error'):
+                advisor_details = self._format_advisor_info(advisor_info)
+                if advisor_details:
+                    system_info_parts.append("### 💡 Query Advisor")
+                    system_info_parts.append(advisor_details)
+            
+            # Sección 2: Análisis de la consulta (detección de intención)
             intent_info = result.get('intent_info', {})
             if intent_info:
                 intent_details = self._format_intent_info(intent_info)
@@ -212,7 +258,7 @@ class GradioRAGApp:
                     system_info_parts.append("### 🎯 Análisis de Consulta")
                     system_info_parts.append(intent_details)
             
-            # Sección 2: Expansión de consulta (términos adicionales utilizados)
+            # Sección 3: Expansión de consulta (términos adicionales utilizados)
             expansion_info = result.get('expansion_info', {})
             if expansion_info and expansion_info.get('expansion_count', 0) > 0:
                 expansion_details = self._format_expansion_info(expansion_info)
@@ -220,7 +266,7 @@ class GradioRAGApp:
                     system_info_parts.append("### 🔍 Expansión de Consulta")
                     system_info_parts.append(expansion_details)
             
-            # Sección 3: Selección de modelo (por qué se eligió este modelo)
+            # Sección 4: Selección de modelo (por qué se eligió este modelo)
             model_info = result.get('model_info', {})
             if model_info:
                 model_details = self._format_model_info(model_info)
@@ -228,7 +274,7 @@ class GradioRAGApp:
                     system_info_parts.append("### 🤖 Selección de Modelo")
                     system_info_parts.append(model_details)
             
-            # Sección 4: Fuentes consultadas (transparencia sobre los documentos utilizados)
+            # Sección 5: Fuentes consultadas (transparencia sobre los documentos utilizados)
             sources = result.get('sources', [])
             if sources:
                 system_info_parts.append("### 📚 Fuentes Consultadas")
@@ -251,13 +297,18 @@ class GradioRAGApp:
             error_msg = f"❌ Error al procesar la pregunta: {str(e)}"
             return error_msg, ""
     
+    def track_suggestion_adoption(self, query: str, adopted: bool) -> str:
+        """
+        NUEVO: Track cuando el usuario adopta una sugerencia
+        """
+        try:
+            self.rag_service.track_suggestion_adoption(query, adopted)
+            return f"✅ Feedback registrado: sugerencia {'adoptada' if adopted else 'rechazada'}"
+        except Exception as e:
+            return f"❌ Error registrando feedback: {str(e)}"
+    
     def reindex_documents(self) -> str:
-        """
-        Reindexar documentos cuando se agregan nuevos archivos o se quiere refrescar la base.
-        
-        Esta operación es costosa en términos de tiempo y recursos, por lo que incluimos
-        advertencias claras y feedback detallado sobre el proceso.
-        """
+        """Reindexar documentos cuando se agregan nuevos archivos."""
         try:
             count = self.rag_service.reindex_documents()
             if count > 0:
@@ -269,53 +320,142 @@ class GradioRAGApp:
             return f"❌ Error al reindexar: {str(e)}"
 
     def get_faq_markdown(self) -> str:
-        """
-        Genera contenido dinámico de preguntas frecuentes basado en el uso real del sistema.
-        
-        Esta función es un ejemplo de cómo el sistema aprende de sus usuarios.
-        Las preguntas más frecuentes se pueden usar para mejorar la documentación,
-        identificar patrones de uso, y optimizar las respuestas del sistema.
-        """
+        """Genera contenido dinámico de preguntas frecuentes."""
         faqs = self.rag_service.get_frequent_questions()
         if not faqs:
             return "_No hay preguntas frecuentes registradas aún._"
         lines = "\n".join(f"- {q}" for q in faqs)
         return f"**Preguntas frecuentes:**\n{lines}"
     
+    def get_improvement_recommendations(self) -> str:
+        """
+        NUEVO: Obtiene recomendaciones de mejora del sistema
+        """
+        try:
+            recommendations = self.rag_service.get_improvement_recommendations()
+            
+            if not recommendations:
+                return "✅ **El sistema está funcionando óptimamente.** No hay recomendaciones de mejora en este momento."
+            
+            lines = ["**🔧 Recomendaciones de Mejora:**"]
+            for rec in recommendations[:3]:  # Max 3 recommendations
+                priority_emoji = "🔥" if rec.get('priority') == 'high' else "⚡" if rec.get('priority') == 'medium' else "💡"
+                lines.append(f"{priority_emoji} **{rec.get('category', 'General')}:** {rec.get('message', '')}")
+                
+                if 'metric' in rec:
+                    lines.append(f"   *Métrica actual: {rec['metric']:.1%}*")
+            
+            return "\n".join(lines)
+            
+        except Exception as e:
+            logger.error(f"Error getting recommendations: {e}")
+            return "_Error al obtener recomendaciones._"
+    
     def create_interface(self) -> gr.Blocks:
         """
-        Crea la interfaz de usuario completa con todas las funcionalidades integradas.
+        Crea la interfaz de usuario completa con Query Advisor integrado.
         
-        Esta función construye la interfaz que expone todas las capacidades del sistema
-        de manera intuitiva. El diseño está pensado para investigadores académicos
-        que necesitan tanto poder como facilidad de uso.
+        ENHANCED: Incluye nuevo panel de Query Advisor y analytics
         """
         with gr.Blocks(
             theme=Soft(),
             css="""
-            /* Estilos personalizados para mejorar la experiencia visual */
+            /* Estilos existentes + nuevos para Query Advisor */
             .system-info {
                 background-color: #f8f9fa !important;
                 border: 1px solid #e9ecef !important;
                 border-radius: 8px !important;
-                padding: 12px !important;
-                margin-top: 8px !important;
+                padding: 16px !important;
+                margin: 8px 0 !important;
                 font-size: 0.9em !important;
                 color: #2c3e50 !important;
+                min-height: 100px !important;
+                overflow-y: auto !important;
+                max-height: 600px !important;
+                word-wrap: break-word !important;
             }
+
+/* Asegurar que el markdown sea visible */
+            .system-info .gr-markdown {
+                color: #2c3e50 !important;
+                background: transparent !important;
+                padding: 0 !important;
+                margin: 0 !important;
+            }
+
             .system-info h3 {
                 color: #34495e !important;
                 font-weight: bold !important;
-                margin-bottom: 8px !important;
+                margin: 12px 0 8px 0 !important;
+                border-bottom: 2px solid #3498db !important;
+                padding-bottom: 4px !important;
             }
+
+            .system-info h4 {
+                color: #2c3e50 !important;
+                font-weight: 600 !important;
+                margin: 8px 0 4px 0 !important;
+            }
+
             .system-info p {
                 color: #2c3e50 !important;
-                margin-bottom: 4px !important;
+                margin: 4px 0 !important;
+                line-height: 1.4 !important;
             }
+
             .system-info strong {
                 color: #2c3e50 !important;
                 font-weight: bold !important;
             }
+
+            .system-info em {
+                color: #555 !important;
+                font-style: italic !important;
+            }
+
+            /* Fix específico para Query Advisor */
+            .advisor-panel {
+                background-color: #e8f4fd !important;
+                border: 2px solid #3498db !important;
+                border-radius: 10px !important;
+                padding: 12px !important;
+                margin: 8px 0 !important;
+            }
+
+            .effectiveness-high { 
+                color: #27ae60 !important; 
+                font-weight: bold !important; 
+            }
+
+            .effectiveness-medium { 
+                color: #f39c12 !important; 
+                font-weight: bold !important; 
+            }
+
+            .effectiveness-low { 
+                color: #e74c3c !important; 
+                font-weight: bold !important; 
+            }
+
+            /* Fix para el contenedor principal */
+            .gr-column {
+                min-width: 0 !important;
+                flex-shrink: 0 !important;
+            }
+
+            /* Asegurar que el texto no se corte */
+            .gr-markdown {
+                overflow: visible !important;
+                word-wrap: break-word !important;
+                white-space: pre-wrap !important;
+            }
+
+            /* Fix para evitar overflow */
+            .gradio-container {
+                max-width: 100% !important;
+                overflow-x: hidden !important;
+            }
+
             /* Indicadores visuales para diferentes tipos de intención */
             .intent-indicator {
                 display: inline-block !important;
@@ -325,61 +465,74 @@ class GradioRAGApp:
                 font-weight: bold !important;
                 margin-right: 8px !important;
             }
+
             .definition { 
                 background-color: #e3f2fd !important; 
                 color: #1565c0 !important; 
             }
+
             .comparison { 
                 background-color: #f3e5f5 !important; 
                 color: #7b1fa2 !important; 
             }
+
             .state_of_art { 
                 background-color: #e8f5e8 !important; 
                 color: #2e7d32 !important; 
             }
+
             .gap_analysis { 
                 background-color: #fff3e0 !important; 
                 color: #ef6c00 !important; 
             }
-            /* Asegurar legibilidad en el panel lateral */
-            .gr-column .gr-markdown {
-                color: #2c3e50 !important;
+
+            /* Fix para scroll suave */
+            .system-info::-webkit-scrollbar {
+                width: 8px;
             }
-            .gr-column .gr-markdown h3 {
-                color: #34495e !important;
-                font-weight: bold !important;
+
+            .system-info::-webkit-scrollbar-track {
+                background: #f1f1f1;
             }
-            .gr-column .gr-markdown strong {
-                color: #2c3e50 !important;
-                font-weight: bold !important;
+
+            .system-info::-webkit-scrollbar-thumb {
+                background: #888;
+                border-radius: 4px;
+            }
+
+            .system-info::-webkit-scrollbar-thumb:hover {
+                background: #555;
             }
             """
         ) as interface:
             
-            # Header principal con branding y descripción del sistema
+            # Header principal con branding actualizado
             gr.HTML("""
             <div style="text-align: center; margin-bottom: 2rem;">
-                <h1>🤖 Sistema RAG Avanzado para Investigación Académica</h1>
-                <p>Especializado en IA para Historias de Usuario - Con Inteligencia Artificial Multicapa</p>
+                <h1>🤖 Sistema RAG Avanzado + Query Advisor</h1>
+                <p>Especializado en IA para Historias de Usuario - Con Inteligencia Artificial Multicapa + Sugerencias Inteligentes</p>
                 <p><small>
                     🎯 Detección automática de intención &nbsp;•&nbsp; 
                     🔍 Expansión inteligente de consultas &nbsp;•&nbsp; 
-                    🤖 Selección dinámica de modelos &nbsp;•&nbsp; 
-                    📊 Transparencia completa del proceso
+                    🤖 Selección dinámica de modelos &nbsp;•&nbsp;
+                    💡 <strong>Query Advisor con sugerencias</strong> &nbsp;•&nbsp;
+                    📊 Analytics y aprendizaje automático
                 </small></p>
             </div>
             """)
             
             with gr.Tabs():
-                # Tab principal - Chat Académico Inteligente
-                with gr.TabItem("💬 Chat Académico Inteligente"):
-                    gr.Markdown("### Asistente de Investigación con IA Multicapa")
+                # Tab principal - Chat Académico Inteligente + Advisor
+                with gr.TabItem("💬 Chat + Query Advisor"):
+                    gr.Markdown("### Asistente de Investigación con IA Multicapa + Advisor")
                     gr.Markdown("""
-                    Haz preguntas académicas y observa cómo el sistema combina múltiples técnicas de IA:
+                    Haz preguntas académicas y observa cómo el sistema combina múltiples técnicas de IA + **Query Advisor**:
                     - 🎯 **Detecta automáticamente** el tipo de consulta (definición, comparación, estado del arte, gaps)
                     - 🔍 **Expande tu consulta** con sinónimos académicos y términos relacionados relevantes  
                     - 🤖 **Selecciona el modelo apropiado** (GPT-4o para análisis complejos, GPT-4o-mini para consultas simples)  
                     - ✨ **Optimiza la respuesta** usando templates académicos especializados por tipo de intención
+                    - 💡 **NUEVO: Analiza efectividad** y sugiere mejoras automáticamente para consultas subóptimas
+                    - 📊 **Aprende de tu uso** para mejorar sugerencias futuras
                     - 📊 **Muestra todo el proceso** para transparencia y reproducibilidad académica
                     """)
                     
@@ -387,7 +540,7 @@ class GradioRAGApp:
                         with gr.Column(scale=2):
                             # Área principal de conversación
                             chatbot = gr.Chatbot(
-                                label="Conversación Académica Inteligente",
+                                label="Conversación Académica Inteligente + Advisor",
                                 height=500,
                                 type='messages',
                                 show_label=True
@@ -406,52 +559,52 @@ class GradioRAGApp:
                                 clear_btn = gr.Button("🗑️ Limpiar Chat", variant="secondary")
                         
                         with gr.Column(scale=1):
-                            # Panel de información del sistema - la clave de la transparencia
+                            # Panel de información del sistema - ENHANCED con Query Advisor
                             system_info_display = gr.Markdown(
-                                label="📊 Información del Sistema",
-                                value="*Envía una consulta para ver cómo el sistema analiza tu pregunta con IA multicapa*",
+                                label="📊 Información del Sistema + Query Advisor",
+                                value="*Envía una consulta para ver cómo el sistema analiza tu pregunta con IA multicapa + sugerencias inteligentes*",
                                 elem_classes=["system-info"],
                                 visible=True
                             )
                     
-                    # Ejemplos académicos organizados por tipo para educar al usuario
-                    with gr.Accordion("📋 Ejemplos por Tipo de Consulta", open=False):
+                    # Ejemplos académicos organizados por tipo + nuevos ejemplos de advisor
+                    with gr.Accordion("📋 Ejemplos por Tipo de Consulta + Query Advisor", open=False):
                         gr.Markdown("""
-                        **🔵 Definiciones Conceptuales (Activará template especializado en definiciones):**
+                        **🔵 Definiciones Conceptuales (Activará template + advisor para definiciones):**
                         - "¿Qué es Natural Language Processing en requirements engineering?"
                         - "Define machine learning aplicado a historias de usuario"
-                        - "Explica el concepto de automated requirements generation"
+                        - "ML" *(consulta vaga que activará sugerencias del advisor)*
                         
-                        **🟣 Análisis Comparativos (Activará template de comparación sistemática):**
+                        **🟣 Análisis Comparativos (Activará template comparativo + sugerencias específicas):**
                         - "Compara supervised vs unsupervised learning para user stories"
                         - "Diferencias entre rule-based y ML approaches en requirements"
-                        - "Ventajas y desventajas de BERT vs GPT para análisis de texto"
+                        - "compara métodos" *(consulta imprecisa que activará advisor)*
                         
-                        **🟢 Estado del Arte (Activará template de síntesis temporal):**
+                        **🟢 Estado del Arte (Activará template temporal + tips contextuales):**
                         - "Estado del arte en IA para automatización de requirements"
                         - "Enfoques actuales en NLP para historias de usuario"
-                        - "Tendencias recientes en AI-assisted software development"
+                        - "IA últimos años" *(consulta mejorable que activará sugerencias)*
                         
-                        **🟠 Análisis de Gaps (Activará template de identificación de oportunidades):**
+                        **🟠 Análisis de Gaps (Activará template de gaps + advisor para precisión):**
                         - "¿Qué limitaciones tienen los métodos actuales de NLP para user stories?"
                         - "Gaps de investigación en automated requirements engineering"
-                        - "¿Qué oportunidades existen para mejorar las técnicas actuales?"
+                        - "problemas actuales" *(consulta vaga que activará advisor con mejoras)*
+                        
+                        **💡 Casos especiales que activan Query Advisor:**
+                        - Consultas muy cortas: "IA", "ML", "NLP"
+                        - Consultas vagas: "métodos", "técnicas", "approaches"
+                        - Consultas sin contexto: "compare algorithms"
                         """)
 
                     # FAQ dinámicas - aprendizaje del sistema
                     faq_display = gr.Markdown(value=self.get_faq_markdown())
                     
                     def respond(message, chat_history):
-                        """
-                        Handler principal para las respuestas del chat.
-                        
-                        Esta función coordina todo el proceso de respuesta y actualiza
-                        tanto el historial de chat como la información del sistema.
-                        """
+                        """Handler principal para las respuestas del chat con Query Advisor."""
                         if not message.strip():
                             return chat_history, "", self.get_faq_markdown(), ""
                         
-                        # Procesar la consulta a través del pipeline completo
+                        # Procesar la consulta a través del pipeline completo + Query Advisor
                         bot_response, system_info = self.chat_response(message, chat_history)
                         
                         # Actualizar historial en formato compatible con Gradio
@@ -474,13 +627,13 @@ class GradioRAGApp:
                     )
                     
                     clear_btn.click(
-                        lambda: ([], "", self.get_faq_markdown(), "*Envía una consulta para ver el análisis multicapa del sistema*"),
+                        lambda: ([], "", self.get_faq_markdown(), "*Envía una consulta para ver el análisis multicapa + Query Advisor del sistema*"),
                         outputs=[chatbot, msg, faq_display, system_info_display]
                     )
                 
-                # Tab de administración del sistema
-                with gr.TabItem("⚙️ Administración del Sistema"):
-                    gr.Markdown("### Gestión del Sistema RAG Inteligente")
+                # Tab de administración del sistema - ENHANCED con analytics
+                with gr.TabItem("⚙️ Administración + Analytics"):
+                    gr.Markdown("### Gestión del Sistema RAG Inteligente + Query Advisor")
                     
                     with gr.Row():
                         init_btn = gr.Button("🚀 Inicializar Sistema", variant="primary")
@@ -492,9 +645,31 @@ class GradioRAGApp:
                         lines=3
                     )
                     
-                    # Información detallada de configuración para transparency técnica
-                    gr.Markdown("### Configuración del Sistema RAG Inteligente")
+                    # NUEVO: Panel de Analytics y Recomendaciones
+                    with gr.Row():
+                        with gr.Column():
+                            analytics_display = gr.Markdown(
+                                label="📊 Analytics del Sistema",
+                                value=self._format_analytics_summary()
+                            )
+                        
+                        with gr.Column():
+                            recommendations_display = gr.Markdown(
+                                label="🔧 Recomendaciones de Mejora",
+                                value=self.get_improvement_recommendations()
+                            )
+                    
+                    refresh_analytics_btn = gr.Button("🔄 Actualizar Analytics", variant="secondary")
+                    
+                    # Información detallada de configuración
+                    gr.Markdown("### Configuración del Sistema RAG Inteligente + Query Advisor")
                     gr.Markdown(f"""
+                    **💡 Query Advisor (NUEVO):**
+                    - 🎯 **Estado**: `Habilitado y operativo`
+                    - 📊 **Umbral efectividad**: `{getattr(self.rag_service.query_advisor, 'effectiveness_threshold', 0.7)}`
+                    - 🔧 **Sugerencias automáticas**: `Activas para consultas <70% efectividad`
+                    - 📈 **Analytics**: `Tracking de patrones y mejoras`
+                    
                     **🧠 Detección de Intención Académica:**
                     - 🎯 **Estado**: `{'Habilitada' if settings.enable_intent_detection else 'Deshabilitada'}`
                     - 📊 **Umbral de confianza**: `{settings.intent_confidence_threshold}`
@@ -521,14 +696,14 @@ class GradioRAGApp:
                     - 📖 **Documentos por consulta**: `{settings.max_documents}`
                     """)
                 
-                # Tab de guía académica - educación del usuario
-                with gr.TabItem("📚 Guía de Investigación Inteligente"):
+                # Tab de guía académica - ENHANCED con Query Advisor
+                with gr.TabItem("📚 Guía de Investigación + Query Advisor"):
                     gr.Markdown("""
-                    ## 🎓 Sistema RAG Inteligente para Investigación Académica
+                    ## 🎓 Sistema RAG Inteligente + Query Advisor para Investigación Académica
                     
-                    ### 🧠 Inteligencia Artificial Multicapa
+                    ### 🧠 Inteligencia Artificial Multicapa + Sugerencias Inteligentes
                     
-                    Este sistema combina **cuatro niveles de IA** para optimizar tu experiencia de investigación:
+                    Este sistema combina **cinco niveles de IA** para optimizar tu experiencia de investigación:
                     
                     #### 🎯 **Nivel 1: Detección Automática de Intención**
                     El sistema analiza tu consulta en **menos de 200ms** para determinar qué tipo de respuesta necesitas:
@@ -558,96 +733,128 @@ class GradioRAGApp:
                     - **Enfoque metodológico específico** (cronológico, comparativo, analítico)
                     - **Formato optimizado** para tu contexto de investigación
                     
-                    ### 🚀 Cómo Aprovechar al Máximo el Sistema
+                    #### 💡 **Nivel 5: Query Advisor (NUEVO)**
+                    Sistema inteligente de sugerencias y mejora continua:
+                    
+                    - **Análisis de efectividad** en tiempo real (score 0-100%)
+                    - **Sugerencias automáticas** para consultas subóptimas (<70% efectividad)
+                    - **Tips contextuales** específicos por tipo de intención detectada
+                    - **Aprendizaje de patrones** para mejorar sugerencias futuras
+                    - **Analytics de uso** para optimización continua del sistema
+                    
+                    ### 🚀 Cómo Aprovechar al Máximo el Sistema + Query Advisor
                     
                     #### **Para Investigación de Tesis sobre IA y User Stories:**
                     
-                    **🔍 Exploración Inicial:**
-                    1. "Estado del arte en IA para historias de usuario" (activará análisis cronológico con expansión temporal)
-                    2. "¿Qué es automated requirements generation?" (activará definición estructurada con sinónimos técnicos)
+                    **🔍 Exploración Inicial con Advisor:**
+                    1. "Estado del arte en IA para historias de usuario" → *Activará análisis cronológico + tips temporales*
+                    2. "IA" → *Query Advisor detectará baja efectividad y sugerirá: "¿Qué aplicaciones de IA existen para historias de usuario?"*
                     
-                    **📊 Análisis Comparativo:**
-                    1. "Compara NLP vs Machine Learning para requirements analysis" (expandirá con variaciones metodológicas)
-                    2. "Ventajas y desventajas de rule-based vs deep learning approaches" (incluirá términos contrastivos)
+                    **📊 Análisis Comparativo con Sugerencias:**
+                    1. "Compara NLP vs ML" → *Advisor sugerirá contexto: "Compara NLP vs ML para análisis de requirements"*
+                    2. "diferencias métodos" → *Advisor reformulará: "¿Cuáles son las diferencias entre métodos rule-based y ML para historias de usuario?"*
                     
-                    **🎯 Identificación de Oportunidades:**
-                    1. "¿Qué limitaciones tienen las técnicas actuales de NLP para user stories?" (expandirá con términos de gap analysis)
-                    2. "Gaps de investigación en automated requirements engineering" (incluirá sinónimos de limitaciones)
+                    **🎯 Identificación de Oportunidades con Precision:**
+                    1. "problemas actuales" → *Advisor especificará: "¿Qué limitaciones técnicas tienen los métodos actuales de NLP para user stories?"*
+                    2. "gaps investigación" → *Advisor contextualizará: "¿Qué gaps de investigación existen en automated requirements engineering?"*
                     
-                    ### 💡 Indicadores Visuales del Sistema
+                    ### 💡 Query Advisor en Acción - Ejemplos Prácticos
                     
-                    Observa el **panel lateral** durante tus consultas para ver:
+                    **Consulta Vaga → Sugerencia Inteligente:**
+                    - ❌ "ML" → 💡 Advisor: "Sé más específico: 'Machine learning aplicado a historias de usuario'"
+                    - ❌ "compara métodos" → 💡 Advisor: "Agrega contexto: 'Compara métodos de NLP vs rule-based para requirements'"
+                    - ❌ "técnicas actuales" → 💡 Advisor: "Estructura como pregunta: '¿Cuáles son las técnicas actuales de IA para user stories?'"
                     
+                    **Efectividad Alta (>80%) → Tips de Optimización:**
+                    - ✅ "¿Qué técnicas de deep learning se usan para análisis semántico de historias de usuario?" 
+                    - 💭 Tip: "Para consultas complejas, considera dividirla en sub-preguntas específicas"
+                    
+                    **Efectividad Media (60-80%) → Mejoras Específicas:**
+                    - ⚡ "Compare supervised learning vs unsupervised para requirements"
+                    - 💡 Advisor: "Especifica criterios: 'Compare supervised vs unsupervised learning en términos de accuracy y interpretabilidad'"
+                    
+                    ### 📊 Indicadores Visuales del Sistema + Query Advisor
+                    
+                    Observa el **panel lateral enhanced** durante tus consultas para ver:
+                    
+                    - **💡 Query Advisor (NUEVO)** con score de efectividad y reasoning
+                    - **🔧 Sugerencias automáticas** para consultas mejorables con ejemplos
+                    - **💭 Tips contextuales** específicos por tipo de intención detectada
                     - **🎯 Tipo de consulta detectada** con nivel de confianza y reasoning
-- **🔍 Términos expandidos** agregados automáticamente con estrategia utilizada
-                   - **🤖 Modelo seleccionado** y razón de la selección basada en complejidad  
-                   - **✨ Optimización aplicada** (si usa template especializado)
-                   - **📚 Fuentes consultadas** para tu respuesta específica
+                    - **🔍 Términos expandidos** agregados automáticamente con estrategia utilizada
+                    - **🤖 Modelo seleccionado** y razón de la selección basada en complejidad  
+                    - **✨ Optimización aplicada** (si usa template especializado)
+                    - **📚 Fuentes consultadas** para tu respuesta específica
                     
-                   ### 🎓 Resultados de Investigación Optimizados
+                    ### 🎓 Resultados de Investigación Optimizados + Aprendizaje Continuo
                     
-                   **Para Definiciones:**
-                   - Estructura académica formal con contexto histórico
-                   - Referencias a autores principales y papers fundamentales
-                   - Conexiones con conceptos relacionados
-                   - Expansión automática con sinónimos técnicos y variaciones
+                    **Para Definiciones (con Query Advisor):**
+                    - Estructura académica formal con contexto histórico
+                    - Referencias a autores principales y papers fundamentales
+                    - Conexiones con conceptos relacionados
+                    - Expansión automática con sinónimos técnicos y variaciones
+                    - **NUEVO:** Sugerencias si la definición solicitada es muy general
                     
-                   **Para Comparaciones:**
-                   - Matrices comparativas sistemáticas
-                   - Análisis de ventajas/desventajas equilibrado
-                   - Recomendaciones basadas en contexto de uso
-                   - Términos contrastivos agregados automáticamente
+                    **Para Comparaciones (con Mejoras Inteligentes):**
+                    - Matrices comparativas sistemáticas
+                    - Análisis de ventajas/desventajas equilibrado
+                    - Recomendaciones basadas en contexto de uso
+                    - Términos contrastivos agregados automáticamente
+                    - **NUEVO:** Advisor sugiere criterios específicos si faltan
                     
-                   **Para Estado del Arte:**
-                   - Evolución temporal de enfoques
-                   - Identificación de tendencias emergentes  
-                   - Análisis de consenso vs controversias
-                   - Expansión con indicadores temporales y de tendencia
+                    **Para Estado del Arte (con Optimización Temporal):**
+                    - Evolución temporal de enfoques
+                    - Identificación de tendencias emergentes  
+                    - Análisis de consenso vs controversias
+                    - Expansión con indicadores temporales y de tendencia
+                    - **NUEVO:** Tips para enfocar en marcos temporales específicos
                     
-                   **Para Análisis de Gaps:**
-                   - Categorización de limitaciones por tipo
-                   - Oportunidades específicas de investigación
-                   - Conexión con trabajos futuros sugeridos
-                   - Términos de limitación y oportunidad expandidos
+                    **Para Análisis de Gaps (con Precisión Enhanced):**
+                    - Categorización de limitaciones por tipo
+                    - Oportunidades específicas de investigación
+                    - Conexión con trabajos futuros sugeridos
+                    - Términos de limitación y oportunidad expandidos
+                    - **NUEVO:** Advisor reformula consultas vagas sobre limitaciones
                     
-                   ### 🔬 Optimización para tu Dominio Específico
-                   
-                   El sistema está **pre-optimizado** para investigación en:
-                   - ✅ Inteligencia Artificial aplicada a Software Engineering
-                   - ✅ Natural Language Processing para Requirements  
-                   - ✅ Machine Learning en User Story Analysis
-                   - ✅ Automated Software Development Tools
-                   - ✅ AI-Assisted Development Methodologies
+                    ### 🔬 Optimización Continua con Analytics
                     
-                   ### 📈 Consejos para Consultas de Alta Calidad
-                   
-                   **🎯 Sé específico en tu intención:**
-                   - ❌ "machine learning" 
-                   - ✅ "¿Qué técnicas de machine learning se usan para analizar historias de usuario?"
-                   - 🔍 *El sistema expandirá automáticamente con términos relacionados*
+                    El **Query Advisor aprende** de tus patrones de uso:
+                    - 📈 **Tracking de efectividad** por tipo de consulta y usuario
+                    - 🎯 **Mejora de sugerencias** basada en adopción de recomendaciones
+                    - 📊 **Analytics de patrones** para identificar consultas exitosas
+                    - 🔧 **Recomendaciones de sistema** para optimizar rendimiento general
                     
-                   **🔗 Conecta conceptos:**
-                   - ❌ "NLP tools"
-                   - ✅ "Compare herramientas de NLP para extracción automática de requirements"
-                   - 🔍 *Activará template comparativo y expandirá con variaciones técnicas*
+                    ### 📈 Consejos para Consultas de Alta Calidad + Query Advisor
                     
-                   **📊 Solicita análisis estructurado:**
-                   - ❌ "research gaps"
-                   - ✅ "¿Qué limitaciones identifican los estudios actuales en automated user story generation?"
-                   - 🔍 *Detectará gap analysis y expandirá con sinónimos de limitaciones*
+                    **🎯 Trabaja con el Advisor para mejorar:**
+                    - ❌ "machine learning" → 💡 Advisor te sugerirá contexto específico
+                    - ✅ Adopta sugerencias: "¿Qué técnicas de machine learning se usan para analizar historias de usuario?"
+                    - 🔍 *El sistema recordará tu preferencia y mejorará futuras sugerencias*
                     
-                   ### 🚀 El Futuro de tu Investigación
-                   
-                   Con este sistema inteligente multicapa, puedes:
-                   - **⚡ Acelerar** tu revisión de literatura 5-10x con expansión automática
-                   - **🎯 Identificar** gaps de investigación automáticamente con detección de intención  
-                   - **📊 Comparar** metodologías de manera sistemática con templates especializados
-                   - **🔍 Descubrir** conexiones entre diferentes líneas de investigación mediante expansión semántica
-                   - **📈 Optimizar** la calidad académica con selección inteligente de modelos
-                   - **🔬 Reproducir** resultados con total transparencia del proceso
-                   """)
+                    **🔗 Permite que el Advisor detecte imprecisiones:**
+                    - ❌ "compare algorithms" → 💡 Advisor: "Especifica dominio: 'Compare algoritmos de NLP para extracción de requirements'"
+                    - ✅ La sugerencia incluirá context académico apropiado
+                    - 🔍 *Sistema aprende qué tipos de comparación prefieres*
+                    
+                    **📊 Usa feedback del Advisor para iterar:**
+                    - ⚡ Consulta inicial con efectividad 65% → Sugerencias del Advisor
+                    - ✅ Adopta reformulación sugerida → Efectividad sube a 85%
+                    - 🔍 *Patrón se registra para mejorar sugerencias futuras*
+                    
+                    ### 🚀 El Futuro de tu Investigación con Query Advisor
+                    
+                    Con este sistema inteligente multicapa + Advisor, puedes:
+                    - **⚡ Acelerar** tu revisión de literatura 5-10x con expansión automática + sugerencias
+                    - **🎯 Identificar** gaps de investigación automáticamente con detección de intención + precision advisor
+                    - **📊 Comparar** metodologías de manera sistemática con templates especializados + criteria suggestions
+                    - **🔍 Descubrir** conexiones entre diferentes líneas de investigación mediante expansión semántica + contextual tips
+                    - **📈 Optimizar** la calidad académica con selección inteligente de modelos + effectiveness tracking
+                    - **🔬 Reproducir** resultados con total transparencia del proceso + analytics de mejora
+                    - **💡 Mejorar continuamente** tus skills de consulta académica con feedback inteligente personalizado
+                    - **📚 Aprender** de patrones exitosos para formular mejores preguntas automáticamente
+                    """)
            
-           # Event handlers para funcionalidades administrativas
+           # Event handlers para funcionalidades administrativas + analytics
             init_btn.click(
                 fn=self.initialize_service,
                 outputs=status_output
@@ -657,15 +864,17 @@ class GradioRAGApp:
                 fn=self.reindex_documents,
                 outputs=status_output
             )
+            
+            refresh_analytics_btn.click(
+                fn=lambda: (self._format_analytics_summary(), self.get_improvement_recommendations()),
+                outputs=[analytics_display, recommendations_display]
+            )
         
         return interface
 
     def launch(self, **kwargs):
         """
-        Lanza la aplicación con configuración optimizada para investigación académica.
-        
-        Esta función inicia el servidor web que expone toda la funcionalidad del sistema
-        RAG inteligente. La configuración por defecto está optimizada para uso académico.
+        Lanza la aplicación con configuración optimizada para investigación académica + Query Advisor.
         """
         interface = self.create_interface()
         
@@ -678,6 +887,6 @@ class GradioRAGApp:
             **kwargs
         }
         
-        logger.info(f"Launching advanced RAG app with multicapa AI on port {launch_kwargs['server_port']}")
-        logger.info("Features enabled: Intent Detection + Query Expansion + Smart Model Selection")
+        logger.info(f"Launching advanced RAG app with Query Advisor on port {launch_kwargs['server_port']}")
+        logger.info("Features enabled: Intent Detection + Query Expansion + Smart Model Selection + Query Advisor + Analytics")
         interface.launch(**launch_kwargs)
