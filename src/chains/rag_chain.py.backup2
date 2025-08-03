@@ -64,29 +64,29 @@ class RAGChain:
         return self._model_selector
     
     def _get_default_system_prompt(self) -> str:
-        """Prompt por defecto para investigación académica"""
-        return """Eres un asistente de investigación académica especializado en inteligencia artificial aplicada al desarrollo de software, específicamente en la mejora de historias de usuario.
+        """Prompt por defecto para investigaciÃ³n acadÃ©mica"""
+        return """Eres un asistente de investigaciÃ³n acadÃ©mica especializado en inteligencia artificial aplicada al desarrollo de software, especÃ­ficamente en la mejora de historias de usuario.
 
 INSTRUCCIONES:
-1. Analiza rigurosamente las fuentes académicas proporcionadas
-2. Identifica metodologías, frameworks, herramientas y técnicas de IA
-3. Extrae hallazgos clave, métricas de evaluación y resultados experimentales
-4. Cita específicamente autores, años y títulos cuando sea relevante
-5. Identifica gaps de investigación, limitaciones y trabajos futuros
-6. Relaciona diferentes enfoques y metodologías entre estudios
-7. Distingue entre teoría, implementación práctica, y validación empírica
+1. Analiza rigurosamente las fuentes acadÃ©micas proporcionadas
+2. Identifica metodologÃ­as, frameworks, herramientas y tÃ©cnicas de IA
+3. Extrae hallazgos clave, mÃ©tricas de evaluaciÃ³n y resultados experimentales
+4. Cita especÃ­ficamente autores, aÃ±os y tÃ­tulos cuando sea relevante
+5. Identifica gaps de investigaciÃ³n, limitaciones y trabajos futuros
+6. Relaciona diferentes enfoques y metodologÃ­as entre estudios
+7. Distingue entre teorÃ­a, implementaciÃ³n prÃ¡ctica, y validaciÃ³n empÃ­rica
 
 FORMATO DE RESPUESTA:
-- Respuestas estructuradas y académicamente rigurosas
-- Incluye citas específicas: (Autor, Año) o [Título del paper]
-- Organiza la información en secciones lógicas
-- Destaca controversias o debates en el área
-- Sugiere conexiones entre diferentes líneas de investigación
+- Respuestas estructuradas y acadÃ©micamente rigurosas
+- Incluye citas especÃ­ficas: (Autor, AÃ±o) o [TÃ­tulo del paper]
+- Organiza la informaciÃ³n en secciones lÃ³gicas
+- Destaca controversias o debates en el Ã¡rea
+- Sugiere conexiones entre diferentes lÃ­neas de investigaciÃ³n
 
-CONTEXTO ACADÉMICO:
+CONTEXTO ACADÃ‰MICO:
 {context}
 
-Responde con rigor académico, precisión científica y enfoque específico en investigación sobre IA en historias de usuario."""
+Responde con rigor acadÃ©mico, precisiÃ³n cientÃ­fica y enfoque especÃ­fico en investigaciÃ³n sobre IA en historias de usuario."""
     
     def _get_or_create_model(self, model_name: str):
         """Obtiene o crea modelo con cache"""
@@ -119,7 +119,7 @@ Responde con rigor académico, precisión científica y enfoque específico en i
             raise ChainException(f"Failed to create RAG chain: {e}")
     
     def _create_chain_for_model(self, model_name: str, specialized_prompt: Optional[str] = None):
-        """Crea cadena para modelo específico con prompt personalizado"""
+        """Crea cadena para modelo especÃ­fico con prompt personalizado"""
         cache_key = f"{model_name}_{hash(specialized_prompt) if specialized_prompt else 'default'}"
         
         if cache_key not in self._chain_cache:
@@ -149,7 +149,7 @@ Responde con rigor académico, precisión científica y enfoque específico en i
         return self._chain_cache[cache_key]
     
     def _detect_intent_sync(self, query: str) -> Dict[str, Any]:
-        """Detección de intención síncrona"""
+        """DetecciÃ³n de intenciÃ³n sÃ­ncrona"""
         try:
             try:
                 loop = asyncio.get_running_loop()
@@ -256,7 +256,7 @@ Responde con rigor académico, precisión científica y enfoque específico en i
                 reasoning = "Smart selection disabled"
             
             # ======= DOCUMENT RETRIEVAL =======
-            # Usar intent_type para enhanced retrieval si está disponible
+            # Usar intent_type para enhanced retrieval si estÃ¡ disponible
             intent_type = None
             if intent_info and intent_info.get('intent_result_object'):
                 intent_type = intent_info['intent_result_object'].intent_type
@@ -298,7 +298,7 @@ Responde con rigor académico, precisión científica y enfoque específico en i
             if template_info:
                 result['template_info'] = template_info
             
-            # Información de expansión si existe
+            # InformaciÃ³n de expansiÃ³n si existe
             expansion_info = None
             if result.get('context') and len(result['context']) > 0:
                 first_doc = result['context'][0]
@@ -322,10 +322,10 @@ Responde con rigor académico, precisión científica y enfoque específico en i
     def get_answer(self, query: str) -> str:
         """Obtiene solo la respuesta"""
         result = self.invoke(query)
-        return result.get('answer', 'No se pudo generar una respuesta académica.')
+        return result.get('answer', 'No se pudo generar una respuesta acadÃ©mica.')
     
     def get_academic_analysis(self, query: str) -> Dict[str, Any]:
-        """Análisis académico completo con template info"""
+        """AnÃ¡lisis acadÃ©mico completo con template info"""
         result = self.invoke(query)
         
         analysis = {
@@ -339,7 +339,7 @@ Responde con rigor académico, precisión científica y enfoque específico en i
             'context_documents': []
         }
         
-        # Agregar información de contexto
+        # Agregar informaciÃ³n de contexto
         for i, doc in enumerate(result.get('context', [])):
             doc_info = {
                 'document_index': i + 1,
