@@ -4,7 +4,7 @@ Refinement Suggester - HU5 Query Preprocessing Component
 """
 
 import time
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
 from enum import Enum
 
