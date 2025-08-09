@@ -61,6 +61,21 @@ CHUNK_OVERLAP=440
 MAX_DOCUMENTS=10
 
 # =============================================================================
+# Configuración de OCR
+# =============================================================================
+# Idiomas para el OCR (por ejemplo, "spa+eng")
+OCR_LANGUAGES=spa+eng
+
+# Resolución del OCR en DPI
+OCR_DPI=300
+
+# Densidad mínima de glifos para aplicar OCR
+OCR_MIN_GLYPH_DENSITY=0.1
+
+# Tamaño máximo de imagen procesable (MB)
+MAX_IMAGE_SIZE_MB=5
+
+# =============================================================================
 # Configuración de Interfaz
 # =============================================================================
 # Puerto del servidor web
