@@ -54,11 +54,43 @@ class RAGService:
 
             if needs_indexing:
                 logger.info("Indexing documents...")
-                indexed_count = self.vector_store_manager.load_and_index_documents()
-                if indexed_count == 0:
-                    logger.warning("No documents were indexed")
-                    return False
-                logger.info(f"Successfully indexed {indexed_count} documents")
+                try:
+                    indexed_count = self.vector_store_manager.load_and_index_documents()
+                    logger.info(f"Indexing process completed. Documents processed: {indexed_count}")
+                    
+                    if indexed_count == 0:
+                        logger.warning("No new documents were indexed")
+                        # Verificar si hay documentos existentes antes de fallar
+                        collection_info = self.vector_store_manager.get_collection_info()
+                        existing_count = collection_info.get("document_count", 0)
+                        
+                        if existing_count == 0:
+                            logger.error("No documents found in collection and none could be indexed")
+                            # Verificar si existen archivos fuente
+                            import os
+                            docs_path = getattr(settings, "documents_path", "./data/documents")
+                            if os.path.exists(docs_path):
+                                files = [f for f in os.listdir(docs_path) if f.endswith(('.pdf', '.docx', '.txt', '.md'))]
+                                logger.error(f"Found {len(files)} supported files in {docs_path} but failed to index them")
+                            return False
+                        else:
+                            logger.info(f"Using existing {existing_count} documents in collection")
+                    else:
+                        logger.info(f"Successfully indexed {indexed_count} new documents")
+                except Exception as e:
+                    logger.error(f"Error during document indexing: {e}")
+                    # Intentar verificar si hay documentos existentes como fallback
+                    try:
+                        collection_info = self.vector_store_manager.get_collection_info()
+                        existing_count = collection_info.get("document_count", 0)
+                        if existing_count > 0:
+                            logger.info(f"Using existing {existing_count} documents in collection despite indexing error")
+                        else:
+                            logger.error("No existing documents found and indexing failed")
+                            return False
+                    except Exception as e2:
+                        logger.error(f"Could not verify existing documents: {e2}")
+                        return False
             else:
                 logger.info("Using existing indexed documents")
 
@@ -96,6 +128,20 @@ class RAGService:
                 ]
                 has_indices = len(subdirs) > 0
 
+            # Check 4: Verificar que existen documentos para indexar
+            docs_path = getattr(settings, "documents_path", "./data/documents")
+            has_source_documents = False
+            if os.path.exists(docs_path):
+                # Buscar archivos soportados
+                supported_extensions = {'.pdf', '.txt', '.docx', '.md'}
+                for root, dirs, files in os.walk(docs_path):
+                    for file in files:
+                        if any(file.lower().endswith(ext) for ext in supported_extensions):
+                            has_source_documents = True
+                            break
+                    if has_source_documents:
+                        break
+
             # Decision logic
             if doc_count > 0:
                 logger.info(f"Found {doc_count} documents in collection")
@@ -105,6 +151,9 @@ class RAGService:
                     f"Found existing vector database with {len(subdirs)} indices, skipping indexing"
                 )
                 return False
+            elif not has_source_documents:
+                logger.warning(f"No supported documents found in {docs_path}")
+                return False  # No tiene sentido intentar indexar si no hay documentos
             else:
                 logger.info("No documents found in collection, indexing needed")
                 return True

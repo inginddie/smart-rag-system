@@ -149,7 +149,7 @@ import time
 from config.settings import settings
 from src.utils.logger import setup_logger
 from src.utils.exceptions import DocumentProcessingException
-from src.storage import document_parser as DocumentParser
+from src.storage import document_parser
 
 logger = setup_logger()
 
@@ -157,7 +157,7 @@ class DocumentProcessor:
     """Procesador de documentos con múltiples formatos"""
 
     def __init__(self, parser=None, ocr_lang: str = "spa+eng"):
-        self.parser = parser or DocumentParser
+        self.parser = parser or document_parser
         self.ocr_lang = ocr_lang
 
         if RecursiveCharacterTextSplitter is None:

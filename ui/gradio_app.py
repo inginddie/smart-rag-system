@@ -4,6 +4,7 @@ Enhanced Gradio App with Query Advisor Integration
 MODIFICATION of existing ui/gradio_app.py
 """
 
+import os
 import gradio as gr
 from typing import List, Tuple
 from config.settings import settings
@@ -32,6 +33,10 @@ class GradioRAGApp:
         try:
             if self.rag_service.initialize():
                 self.initialized = True
+                # Verificar cuántos documentos están disponibles
+                collection_info = self.rag_service.vector_store_manager.get_collection_info()
+                doc_count = collection_info.get("document_count", 0)
+                
                 return (
                     "✅ Sistema RAG inicializado correctamente con todas las funcionalidades avanzadas habilitadas:\n"
                     + "🎯 Detección de intención académica\n"
@@ -39,10 +44,10 @@ class GradioRAGApp:
                     + "🤖 Selección inteligente de modelos\n"
                     + "💡 Query Advisor con sugerencias inteligentes\n"
                     + "📊 Analytics de uso y aprendizaje\n"
-                    + "📚 Base de documentos indexada y lista"
+                    + f"📚 Base de documentos lista ({doc_count} documentos indexados)"
                 )
             else:
-                return "⚠️ Sistema inicializado pero no se encontraron documentos para indexar"
+                return "❌ Error: No se pudo inicializar el sistema RAG. Verifique los logs para más detalles o intente reindexar los documentos."
         except Exception as e:
             logger.error(f"Error initializing service: {e}")
             return f"❌ Error al inicializar: {str(e)}"
@@ -305,19 +310,30 @@ class GradioRAGApp:
             sources = result.get("sources", [])
             if sources:
                 system_info_parts.append("### 📚 Fuentes Consultadas")
-                source_list = []
-                for i, source in enumerate(
-                    sources[:3], 1
-                ):  # Mostrar máximo 3 fuentes principales
-                    file_name = source.get("metadata", {}).get(
-                        "file_name", "Documento desconocido"
+                
+                # Extract unique source names
+                unique_sources = set()
+                for source in sources:
+                    metadata = source.get("metadata", {})
+                    # Try multiple possible fields for document name
+                    file_name = (
+                        metadata.get("title") or 
+                        os.path.basename(metadata.get("source", "")) or
+                        metadata.get("file_name", "Documento desconocido")
                     )
-                    source_list.append(f"{i}. **{file_name}**")
+                    unique_sources.add(file_name)
+                
+                # Create numbered list of unique sources
+                source_list = []
+                for i, source_name in enumerate(sorted(unique_sources), 1):
+                    source_list.append(f"{i}. **{source_name}**")
+                
                 system_info_parts.append("\n".join(source_list))
-
-                if len(sources) > 3:
+                
+                # Show total count info
+                if len(sources) != len(unique_sources):
                     system_info_parts.append(
-                        f"*... y {len(sources) - 3} fuentes adicionales*"
+                        f"*Total: {len(unique_sources)} documentos únicos consultados ({len(sources)} fragmentos)*"
                     )
 
             # Combinar toda la información del sistema en un panel cohesivo

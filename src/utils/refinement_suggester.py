@@ -8,7 +8,7 @@ from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
 from enum import Enum
 
-from src.utils.query_validator import ValidationResult, ValidationIssue
+from src.utils.query_validator import ValidationResult, ValidationIssue, ValidationIssueType
 from src.utils.logger import setup_logger
 
 logger = setup_logger()
@@ -108,16 +108,16 @@ class RefinementSuggester:
         """Genera sugerencias para un issue específico"""
         suggestions = []
         
-        if issue == ValidationIssue.TOO_VAGUE:
+        if issue.issue_type == ValidationIssueType.TOO_VAGUE:
             suggestions.extend(self._generate_specificity_suggestions(query))
         
-        elif issue == ValidationIssue.TOO_GENERAL:
+        elif issue.issue_type == ValidationIssueType.TOO_GENERAL:
             suggestions.extend(self._generate_context_suggestions(query))
         
-        elif issue == ValidationIssue.OUT_OF_DOMAIN:
+        elif issue.issue_type == ValidationIssueType.OUT_OF_DOMAIN:
             suggestions.extend(self._generate_domain_alignment_suggestions(query))
         
-        elif issue == ValidationIssue.MISSING_CONTEXT:
+        elif issue.issue_type == ValidationIssueType.LACKS_CONTEXT:
             suggestions.extend(self._generate_structure_suggestions(query))
         
         return suggestions
@@ -277,19 +277,22 @@ class RefinementSuggester:
         """Genera quick fixes textuales para problemas comunes"""
         fixes = []
         
-        if ValidationIssue.TOO_VAGUE in issues:
+        # Check issue types correctly
+        issue_types = [issue.issue_type for issue in issues]
+        
+        if ValidationIssueType.TOO_VAGUE in issue_types:
             fixes.append("Ser más específico sobre qué aspecto te interesa")
             fixes.append("Agregar contexto de aplicación (ej: 'para requirements')")
         
-        if ValidationIssue.TOO_GENERAL in issues:
+        if ValidationIssueType.TOO_GENERAL in issue_types:
             fixes.append("Especificar el dominio de aplicación")
             fixes.append("Usar términos técnicos más precisos")
         
-        if ValidationIssue.OUT_OF_DOMAIN in issues:
+        if ValidationIssueType.OUT_OF_DOMAIN in issue_types:
             fixes.append("Enfocar la consulta en IA/software/requirements")
             fixes.append("Usar terminología académica del dominio")
         
-        if ValidationIssue.MISSING_CONTEXT in issues:
+        if ValidationIssueType.LACKS_CONTEXT in issue_types:
             fixes.append("Estructurar como pregunta clara (¿Qué...?, ¿Cómo...?)")
             fixes.append("Especificar el objetivo de la consulta")
         
@@ -298,12 +301,12 @@ class RefinementSuggester:
     def _get_strategy_for_issue(self, issue: ValidationIssue) -> RefinementStrategy:
         """Mapea issues a estrategias de refinamiento"""
         mapping = {
-            ValidationIssue.TOO_VAGUE: RefinementStrategy.SPECIFICITY,
-            ValidationIssue.TOO_GENERAL: RefinementStrategy.CONTEXT_ADDITION,
-            ValidationIssue.OUT_OF_DOMAIN: RefinementStrategy.DOMAIN_ALIGNMENT,
-            ValidationIssue.MISSING_CONTEXT: RefinementStrategy.STRUCTURE_IMPROVEMENT
+            ValidationIssueType.TOO_VAGUE: RefinementStrategy.SPECIFICITY,
+            ValidationIssueType.TOO_GENERAL: RefinementStrategy.CONTEXT_ADDITION,
+            ValidationIssueType.OUT_OF_DOMAIN: RefinementStrategy.DOMAIN_ALIGNMENT,
+            ValidationIssueType.LACKS_CONTEXT: RefinementStrategy.STRUCTURE_IMPROVEMENT
         }
-        return mapping.get(issue, RefinementStrategy.SPECIFICITY)
+        return mapping.get(issue.issue_type, RefinementStrategy.SPECIFICITY)
     
     def _load_suggestion_templates(self) -> Dict:
         """Carga templates de sugerencias por categoría"""

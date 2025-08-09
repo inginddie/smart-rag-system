@@ -340,6 +340,19 @@ class VectorStoreManager:
 
             # Realizar búsqueda con query expandida (o original si falló expansion)
             results = vs.similarity_search(expanded_query, k=k)
+            
+            # Filter out documents with None or invalid content
+            valid_results = []
+            for result in results:
+                if result.page_content is None:
+                    logger.warning(f"Skipping document with None content. Metadata: {result.metadata}")
+                    continue
+                if not isinstance(result.page_content, str):
+                    logger.warning(f"Skipping document with invalid content type: {type(result.page_content)}")
+                    continue
+                valid_results.append(result)
+            
+            results = valid_results
 
             # Agregar metadata de expansion a los resultados si está disponible
             if expansion_info:
@@ -361,6 +374,19 @@ class VectorStoreManager:
         try:
             vs = self.vector_store
             results = vs.similarity_search(query, k=k)
+            
+            # Filter out documents with None or invalid content
+            valid_results = []
+            for result in results:
+                if result.page_content is None:
+                    logger.warning(f"Skipping document with None content. Metadata: {result.metadata}")
+                    continue
+                if not isinstance(result.page_content, str):
+                    logger.warning(f"Skipping document with invalid content type: {type(result.page_content)}")
+                    continue
+                valid_results.append(result)
+            
+            results = valid_results
             logger.debug(
                 f"Found {len(results)} similar documents for original query (no expansion)"
             )
@@ -372,6 +398,30 @@ class VectorStoreManager:
     def get_retriever(self, search_kwargs: Optional[dict] = None):
         """Obtiene un retriever configurado"""
         search_kwargs = search_kwargs or {"k": settings.max_documents}
+        
+        # Monkey patch the vector store's similarity_search to use our validated version
+        original_similarity_search = self.vector_store.similarity_search
+        
+        def validated_similarity_search(query: str, k: int = 4, **kwargs):
+            # Use our validation logic
+            results = original_similarity_search(query, k, **kwargs)
+            
+            # Filter out documents with None or invalid content
+            valid_results = []
+            for result in results:
+                if result.page_content is None:
+                    logger.warning(f"Skipping document with None content. Metadata: {result.metadata}")
+                    continue
+                if not isinstance(result.page_content, str):
+                    logger.warning(f"Skipping document with invalid content type: {type(result.page_content)}")
+                    continue
+                valid_results.append(result)
+            
+            return valid_results
+        
+        # Replace the method temporarily
+        self.vector_store.similarity_search = validated_similarity_search
+        
         return self.vector_store.as_retriever(search_kwargs=search_kwargs)
 
     def delete_collection(self):
