@@ -537,6 +537,56 @@ class Settings(BaseSettings):
         
         return warnings
 
+    def validate_configuration(self) -> dict:
+        """Validate overall configuration"""
+        issues = []
+        warnings = []
+        
+        # Validate basic settings
+        if not self.openai_api_key or self.openai_api_key == "":
+            issues.append("OpenAI API key not set")
+        
+        # Add preprocessing warnings
+        warnings.extend(self.validate_preprocessing_settings())
+        warnings.extend(self.validate_advisor_settings())
+        
+        return {
+            "valid": len(issues) == 0,
+            "issues": issues,
+            "warnings": warnings
+        }
+    
+    @property
+    def parsing(self):
+        """Simple parsing configuration for backward compatibility"""
+        class ParsingConfig:
+            SUPPORTED_FORMATS = ["pdf", "docx", "txt", "pptx"]
+            MAX_FILE_SIZE_MB = 50
+            CHUNK_BY_STRUCTURE = True
+        
+        return ParsingConfig()
+    
+    def get_parser_config(self, parser_type: str) -> dict:
+        """Get configuration for specific parser types"""
+        configs = {
+            "pdf": {
+                "use_pdfplumber": True,
+                "extract_tables": True,
+                "extract_images": False
+            },
+            "docx": {
+                "preserve_styles": True,
+                "extract_tables": True,
+                "extract_images": False
+            },
+            "pptx": {
+                "extract_notes": True,
+                "extract_slide_layouts": True,
+                "preserve_animations": False
+            }
+        }
+        return configs.get(parser_type, {})
+
 
 # Instancia global de configuración
 settings = Settings()
