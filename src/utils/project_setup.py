@@ -2,6 +2,7 @@
 """Utilities to programmatically create the project structure and files."""
 from pathlib import Path
 from typing import Dict, Iterable
+
 from src.utils.logger import setup_logger
 
 logger = setup_logger()

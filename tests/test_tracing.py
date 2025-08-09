@@ -197,8 +197,20 @@ def test_model_selection_warning_no_model(monkeypatch, caplog):
     monkeypatch.setattr(ModelSelector, "select_model", fake_select)
     selector = ModelSelector()
     clear_queue()
-    with caplog.at_level(logging.WARNING):
-        with Tracer():
-            selector.select_model("test")
-    assert any("No model selected" in rec.message for rec in caplog.records)
+    
+    # Since we're using loguru, let's mock the logger directly
+    from src.utils.tracing import logger
+    warning_called = []
+    original_warning = logger.warning
+    
+    def mock_warning(msg):
+        warning_called.append(msg)
+        return original_warning(msg)
+    
+    monkeypatch.setattr(logger, "warning", mock_warning)
+    
+    with Tracer():
+        selector.select_model("test")
+    
+    assert any("No model selected in model selector" in msg for msg in warning_called)
     settings.log_level = "INFO"

@@ -23,7 +23,7 @@ load_dotenv()
 
 
 class Settings(BaseSettings):
-    """Configuración centralizada con Query Advisor, Analytics y HU5 Preprocessing"""
+    """Configuración centralizada con Query Advisor, Analytics y HU5 Query Preprocessing"""
 
     # OpenAI Configuration
     openai_api_key: str = Field(default="", env="OPENAI_API_KEY")
@@ -170,34 +170,95 @@ class Settings(BaseSettings):
 
     # ======= HU5: QUERY PREPROCESSING & VALIDATION CONFIGURATION =======
     
-    # Query Preprocessing Core Settings
+    # Core Preprocessing Settings
     enable_query_preprocessing: bool = Field(default=True, env="ENABLE_QUERY_PREPROCESSING")
     preprocessing_max_time_ms: int = Field(default=300, env="PREPROCESSING_MAX_TIME_MS")
     validation_before_processing: bool = Field(default=True, env="VALIDATION_BEFORE_PROCESSING")
+    preprocessing_sla_ms: int = Field(default=300, env="PREPROCESSING_SLA_MS")
+    validation_sla_ms: int = Field(default=100, env="VALIDATION_SLA_MS")
+    suggestion_generation_sla_ms: int = Field(default=200, env="SUGGESTION_GENERATION_SLA_MS")
     
-    # Query Validation Thresholds
+    # Query Validation Rules
     min_query_length: int = Field(default=3, env="MIN_QUERY_LENGTH")  # words
     max_query_length: int = Field(default=100, env="MAX_QUERY_LENGTH")  # words
+    min_query_word_count: int = Field(default=3, env="MIN_QUERY_WORD_COUNT")
+    max_query_word_count: int = Field(default=50, env="MAX_QUERY_WORD_COUNT")
+    min_technical_terms_ratio: float = Field(default=0.2, env="MIN_TECHNICAL_TERMS_RATIO")
     vague_query_threshold: float = Field(default=0.4, env="VAGUE_QUERY_THRESHOLD")
     domain_relevance_threshold: float = Field(default=0.3, env="DOMAIN_RELEVANCE_THRESHOLD")
     
-    # Refinement Suggestions Settings
+    # Domain Detection Configuration
+    enable_domain_validation: bool = Field(default=True, env="ENABLE_DOMAIN_VALIDATION")
+    domain_confidence_threshold: float = Field(default=0.7, env="DOMAIN_CONFIDENCE_THRESHOLD")
+    academic_domain_keywords: List[str] = Field(
+        default=[
+            "machine learning", "deep learning", "artificial intelligence", "AI", "ML", "DL",
+            "requirements engineering", "software engineering", "requirements", "software",
+            "algorithm", "methodology", "framework", "analysis", "approach", "method",
+            "natural language processing", "NLP", "data science", "neural networks",
+            "user stories", "historias de usuario", "acceptance criteria", "functional requirements",
+            "agile", "scrum", "development", "programming", "coding", "implementation",
+            "research", "study", "investigation", "evaluation", "assessment", "validation",
+            "optimization", "performance", "scalability", "architecture", "design patterns"
+        ]
+    )
+    
+    # Refinement Suggestions Configuration
     max_refinement_suggestions: int = Field(default=3, env="MAX_REFINEMENT_SUGGESTIONS")
     suggestion_confidence_threshold: float = Field(default=0.6, env="SUGGESTION_CONFIDENCE_THRESHOLD")
     auto_apply_high_confidence: bool = Field(default=False, env="AUTO_APPLY_HIGH_CONFIDENCE")
+    enable_context_suggestions: bool = Field(default=True, env="ENABLE_CONTEXT_SUGGESTIONS")
+    enable_specificity_suggestions: bool = Field(default=True, env="ENABLE_SPECIFICITY_SUGGESTIONS")
+    enable_domain_term_suggestions: bool = Field(default=True, env="ENABLE_DOMAIN_TERM_SUGGESTIONS")
     
-    # Domain Validation Keywords
-    academic_domain_keywords: List[str] = Field(
+    # Context Addition Templates
+    academic_context_templates: List[str] = Field(
         default=[
-            "machine learning", "artificial intelligence", "deep learning", "nlp",
-            "natural language processing", "requirements engineering", "software engineering",
-            "user stories", "requirements", "agile", "software development",
-            "algorithms", "models", "frameworks", "methodology", "approach",
-            "research", "analysis", "implementation", "evaluation", "validation"
+            "en el contexto de requirements engineering",
+            "aplicado a historias de usuario", 
+            "para desarrollo de software",
+            "en investigación académica",
+            "para análisis de requirements",
+            "en metodologías ágiles",
+            "aplicado a ingeniería de software"
+        ]
+    )
+    
+    # UI Behavior Configuration
+    auto_skip_preprocessing: bool = Field(default=False, env="AUTO_SKIP_PREPROCESSING")
+    show_preprocessing_tips: bool = Field(default=True, env="SHOW_PREPROCESSING_TIPS")
+    enable_preprocessing_modal: bool = Field(default=True, env="ENABLE_PREPROCESSING_MODAL")
+    modal_timeout_seconds: int = Field(default=30, env="MODAL_TIMEOUT_SECONDS")
+    
+    # Vague Query Detection Patterns
+    vague_query_patterns: List[str] = Field(
+        default=[
+            r'^(ia|ai|ml|dl|nlp)$',  # Single acronyms
+            r'^(machine learning|deep learning|artificial intelligence)$',  # Basic terms only
+            r'^(métodos?|técnicas?|approaches?|methods?)$',  # Generic methodology terms
+            r'^(software|requirements?|historias?)$',  # Domain terms without context
+            r'^(algoritmos?|algorithms?)$',  # Generic algorithm references
+            r'^(comparar?|compare)$',  # Comparison without subjects
+            r'^(análisis|analysis)$'  # Analysis without object
         ]
     )
     
     # Out-of-Domain Detection
+    non_academic_indicators: List[str] = Field(
+        default=[
+            "recetas", "cocina", "comida", "recipes", "cooking", "food",
+            "deportes", "sports", "fútbol", "football", "soccer",
+            "música", "music", "canciones", "songs", "artistas", "artists",
+            "películas", "movies", "series", "entertainment", "entretenimiento",
+            "viajes", "travel", "turismo", "tourism", "vacaciones", "vacation",
+            "salud personal", "medicina personal", "síntomas", "symptoms",
+            "finanzas personales", "inversiones", "stocks", "trading",
+            "política", "politics", "elecciones", "elections", "gobierno",
+            "weather", "celebrities", "health", "medicine", "legal",
+            "finance", "investment", "real estate", "fashion", "beauty"
+        ]
+    )
+    
     out_of_domain_keywords: List[str] = Field(
         default=[
             "weather", "sports", "cooking", "travel", "entertainment", "music",
@@ -320,6 +381,42 @@ class Settings(BaseSettings):
             "show_contextual_tips": self.show_contextual_tips,
             "show_analytics_summary": self.show_analytics_summary
         }
+
+    # ======= HU5: QUERY PREPROCESSING UTILITY METHODS =======
+    
+    def get_preprocessing_config(self) -> Dict:
+        """Obtiene configuración específica del Query Preprocessing"""
+        return {
+            "enabled": self.enable_query_preprocessing,
+            "validation_sla_ms": self.validation_sla_ms,
+            "suggestion_sla_ms": self.suggestion_generation_sla_ms,
+            "min_word_count": self.min_query_word_count,
+            "max_word_count": self.max_query_word_count,
+            "domain_validation": self.enable_domain_validation,
+            "domain_threshold": self.domain_confidence_threshold,
+            "max_suggestions": self.max_refinement_suggestions,
+            "enable_modal": self.enable_preprocessing_modal,
+            "auto_skip": self.auto_skip_preprocessing
+        }
+    
+    def get_domain_detection_config(self) -> Dict:
+        """Obtiene configuración para detección de dominio"""
+        return {
+            "academic_keywords": self.academic_domain_keywords,
+            "non_academic_indicators": self.non_academic_indicators,
+            "confidence_threshold": self.domain_confidence_threshold,
+            "context_templates": self.academic_context_templates
+        }
+    
+    def get_validation_rules(self) -> Dict:
+        """Obtiene reglas de validación de consultas"""
+        return {
+            "min_words": self.min_query_word_count,
+            "max_words": self.max_query_word_count,
+            "min_technical_ratio": self.min_technical_terms_ratio,
+            "vague_patterns": self.vague_query_patterns,
+            "domain_validation": self.enable_domain_validation
+        }
     
     def is_feature_enabled(self, feature: str) -> bool:
         """Verifica si una feature específica está habilitada"""
@@ -333,13 +430,17 @@ class Settings(BaseSettings):
             "query_expansion": self.enable_query_expansion,
             "smart_selection": self.enable_smart_selection,
             "query_preprocessing": self.enable_query_preprocessing,  # NEW HU5
+            "domain_validation": self.enable_domain_validation,      # NEW
+            "context_suggestions": self.enable_context_suggestions,  # NEW
+            "specificity_suggestions": self.enable_specificity_suggestions,  # NEW
+            "preprocessing_modal": self.enable_preprocessing_modal,   # NEW
             "validation_before_processing": self.validation_before_processing  # NEW HU5
         }
         
         return feature_flags.get(feature, False)
     
     def get_sla_config(self) -> Dict:
-        """Obtiene todas las configuraciones SLA incluyendo HU5 Preprocessing"""
+        """Obtiene todas las configuraciones SLA incluyendo HU5 Query Preprocessing"""
         return {
             "ingest_ms": self.ingest_sla_ms,
             "embed_ms": self.embed_sla_ms,
@@ -349,20 +450,32 @@ class Settings(BaseSettings):
             "advisor_analysis_ms": self.advisor_analysis_sla_ms,
             "advisor_suggestion_ms": self.advisor_suggestion_sla_ms,
             "analytics_processing_ms": self.analytics_processing_sla_ms,
-            "preprocessing_ms": self.preprocessing_sla_ms,  # NEW HU5
-            "validation_ms": self.validation_sla_ms,  # NEW HU5
-            "refinement_suggestion_ms": self.refinement_suggestion_sla_ms  # NEW HU5
+            "preprocessing_total_ms": self.preprocessing_sla_ms,      # NEW
+            "preprocessing_ms": self.preprocessing_max_time_ms,  # NEW HU5
+            "validation_ms": self.validation_sla_ms,                 # NEW
+            "refinement_suggestion_ms": self.refinement_suggestion_sla_ms,  # NEW HU5
+            "suggestion_generation_ms": self.suggestion_generation_sla_ms  # NEW
         }
     
     def validate_preprocessing_settings(self) -> List[str]:
-        """Valida configuraciones de HU5 Preprocessing y retorna warnings"""
+        """Valida configuraciones de HU5 Query Preprocessing y retorna warnings"""
         warnings = []
         
+        # Combined validation from both versions
         if not 1 <= self.min_query_length <= 10:
             warnings.append("min_query_length should be between 1 and 10 words")
         
+        if not 1 <= self.min_query_word_count <= 10:
+            warnings.append("min_query_word_count should be between 1 and 10")
+        
         if not 20 <= self.max_query_length <= 200:
             warnings.append("max_query_length should be between 20 and 200 words")
+        
+        if not 10 <= self.max_query_word_count <= 100:
+            warnings.append("max_query_word_count should be between 10 and 100")
+        
+        if self.min_query_word_count >= self.max_query_word_count:
+            warnings.append("min_query_word_count should be less than max_query_word_count")
             
         if not 0.1 <= self.vague_query_threshold <= 0.8:
             warnings.append("vague_query_threshold should be between 0.1 and 0.8")
@@ -370,11 +483,29 @@ class Settings(BaseSettings):
         if not 0.1 <= self.domain_relevance_threshold <= 0.7:
             warnings.append("domain_relevance_threshold should be between 0.1 and 0.7")
         
+        if not 0.0 <= self.domain_confidence_threshold <= 1.0:
+            warnings.append("domain_confidence_threshold should be between 0.0 and 1.0")
+        
+        if not 0.0 <= self.min_technical_terms_ratio <= 1.0:
+            warnings.append("min_technical_terms_ratio should be between 0.0 and 1.0")
+        
         if self.preprocessing_max_time_ms < 100:
             warnings.append("preprocessing_max_time_ms too low, may cause frequent SLA breaches")
             
         if self.preprocessing_max_time_ms > 1000:
             warnings.append("preprocessing_max_time_ms too high, may degrade user experience")
+        
+        if self.validation_sla_ms < 50:
+            warnings.append("validation_sla_ms too low, may cause frequent SLA breaches")
+        
+        if self.suggestion_generation_sla_ms < 100:
+            warnings.append("suggestion_generation_sla_ms too low, may cause frequent SLA breaches")
+        
+        if not 1 <= self.max_refinement_suggestions <= 5:
+            warnings.append("max_refinement_suggestions should be between 1 and 5")
+        
+        if len(self.academic_domain_keywords) < 10:
+            warnings.append("academic_domain_keywords list seems too short for effective domain detection")
         
         return warnings
 

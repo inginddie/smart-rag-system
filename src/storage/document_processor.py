@@ -5,6 +5,7 @@ from pathlib import Path
 
 try:
     import pandas as pd
+    PANDAS_AVAILABLE = True
 except ImportError:  # pragma: no cover - optional dependency
     pd = None  # type: ignore
 
@@ -40,22 +41,97 @@ except ImportError:  # pragma: no cover - optional dependency
                 content = f.read()
             return [Document(page_content=content, metadata={})]
 
-# Definir ExcelLoader siempre disponible (fuera del bloque except)
-    class ExcelLoader:
-        def __init__(self, path: str):
-            self.path = path
+# ======= DEFINICIÓN CONDICIONAL CORRECTA DE ExcelLoader =======
+class ExcelLoader:
+    """
+    Loader para archivos Excel que maneja dependencias opcionales de manera elegante.
 
-        def load(self):
-            if pd is None:
-                raise ImportError("pandas is required for Excel loading")
-            df = pd.read_excel(self.path, engine="openpyxl")
-            text = (
-                df.astype(str)
-                .fillna("")
-                .agg(" ".join, axis=1)
-                .str.cat(sep="\n")
+    Esta clase siempre existe independientemente de si pandas está instalado,
+    pero su comportamiento cambia según la disponibilidad de dependencias.
+    """
+
+    def __init__(self, path: str):
+        self.path = path
+
+    def load(self):
+        """
+        Carga archivos Excel si pandas está disponible, sino retorna error informativo.
+
+        Este approach asegura que el sistema nunca falle por dependencias faltantes,
+        pero proporciona feedback claro sobre qué se necesita para habilitar la funcionalidad.
+        """
+        if not PANDAS_AVAILABLE:
+            # En lugar de fallar, retornamos un documento que explica la situación
+            error_msg = (
+                f"Cannot process Excel file {self.path}: pandas is not installed. "
+                f"To enable Excel support, install pandas and openpyxl: "
+                f"pip install pandas openpyxl"
             )
-            return [Document(page_content=text, metadata={})]
+            return [
+                Document(
+                    page_content=error_msg,
+                    metadata={
+                        "source": self.path,
+                        "type": "excel",
+                        "error": "missing_dependency",
+                        "required_packages": ["pandas", "openpyxl"],
+                    },
+                )
+            ]
+
+        try:
+            # pandas está disponible, intentar procesar el archivo
+            df = pd.read_excel(self.path, engine="openpyxl")
+
+            # Convertir DataFrame a texto preservando estructura
+            if df.empty:
+                content = f"Excel file {self.path} is empty"
+            else:
+                # Crear representación textual del DataFrame
+                content = f"Excel file: {self.path}\n\n"
+                content += f"Shape: {df.shape[0]} rows, {df.shape[1]} columns\n\n"
+
+                # Agregar headers si existen
+                if not df.columns.empty:
+                    content += f"Columns: {', '.join(df.columns.astype(str))}\n\n"
+
+                # Convertir datos a texto línea por línea
+                text_rows = []
+                for index, row in df.iterrows():
+                    row_text = " | ".join(row.astype(str).fillna(""))
+                    text_rows.append(row_text)
+
+                content += "\n".join(text_rows)
+
+            return [
+                Document(
+                    page_content=content,
+                    metadata={
+                        "source": self.path,
+                        "type": "excel",
+                        "rows": df.shape[0] if not df.empty else 0,
+                        "columns": df.shape[1] if not df.empty else 0,
+                    },
+                )
+            ]
+
+        except Exception as e:
+            # Error procesando el archivo específico
+            error_msg = f"Error processing Excel file {self.path}: {str(e)}"
+            return [
+                Document(
+                    page_content=error_msg,
+                    metadata={
+                        "source": self.path,
+                        "type": "excel",
+                        "error": "processing_error",
+                        "error_details": str(e),
+                    },
+                )
+            ]
+
+
+import time
 
 from config.settings import settings
 from src.utils.logger import setup_logger
@@ -73,8 +149,16 @@ class DocumentProcessor:
                     chunks = []
                     for doc in docs:
                         text = doc.page_content
-                        for part in text.split("\n\n"):
-                            chunks.append(Document(page_content=part, metadata=doc.metadata))
+                        # Dividir por párrafos dobles primero, luego por párrafos simples
+                        paragraphs = text.split("\n\n")
+                        for paragraph in paragraphs:
+                            if paragraph.strip():  # Solo agregar párrafos no vacíos
+                                chunks.append(
+                                    Document(
+                                        page_content=paragraph.strip(),
+                                        metadata=doc.metadata,
+                                    )
+                                )
                     return chunks
 
             self.text_splitter = _SimpleSplitter()
@@ -94,9 +178,46 @@ class DocumentProcessor:
             '.xls': ExcelLoader,
             '.xlsx': ExcelLoader,
         }
-    
+
+        # Agregar loaders opcionales según disponibilidad
+        if PyPDFLoader is not None:
+            self.loader_mapping[".pdf"] = PyPDFLoader
+            logger.debug("PDF support enabled")
+        else:
+            logger.warning("PDF support disabled (PyPDFLoader not available)")
+
+        if Docx2txtLoader is not None:
+            self.loader_mapping[".docx"] = Docx2txtLoader
+            logger.debug("DOCX support enabled")
+        else:
+            logger.warning("DOCX support disabled (Docx2txtLoader not available)")
+
+        # ExcelLoader siempre está disponible, pero su comportamiento depende de pandas
+        self.loader_mapping[".xls"] = ExcelLoader
+        self.loader_mapping[".xlsx"] = ExcelLoader
+
+        if PANDAS_AVAILABLE:
+            logger.info("Excel support fully enabled (pandas available)")
+        else:
+            logger.warning(
+                "Excel support limited (pandas not available). "
+                "Excel files will generate informative error messages. "
+                "Install pandas and openpyxl to enable full Excel processing."
+            )
+
+        # Log final de formatos soportados
+        supported_formats = list(self.loader_mapping.keys())
+        logger.info(
+            f"Document processor initialized with support for: {', '.join(supported_formats)}"
+        )
+
     def _safe_load_file(self, file_path: Path, loader_class):
-        """Carga segura de archivos con manejo de errores"""
+        """
+        Carga segura de archivos con manejo comprehensivo de errores.
+
+        Esta función implementa múltiples capas de protección para asegurar
+        que un archivo problemático nunca cause falla del sistema completo.
+        """
         try:
             logger.info(f"Loading file: {file_path.name} ({file_path.stat().st_size / 1024 / 1024:.1f} MB)")
 
@@ -114,16 +235,40 @@ class DocumentProcessor:
             if not docs:
                 logger.warning(f"No content extracted from {file_path}")
                 return []
-            
-            logger.info(f"Successfully loaded {len(docs)} pages from {file_path.name}")
-            return docs
-            
+
+            # Verificar que los documentos tienen contenido real
+            valid_docs = []
+            for doc in docs:
+                if doc.page_content and doc.page_content.strip():
+                    valid_docs.append(doc)
+                else:
+                    logger.debug(f"Skipping empty document from {file_path}")
+
+            if valid_docs:
+                logger.info(
+                    f"Successfully loaded {len(valid_docs)} documents from {file_path.name}"
+                )
+                return valid_docs
+            else:
+                logger.warning(f"All documents from {file_path} were empty")
+                return []
+
         except Exception as e:
-            logger.error(f"Error loading {file_path}: {str(e)[:200]}...")
+            # Log detallado del error para debugging
+            error_msg = str(e)
+            logger.error(f"Error loading {file_path}: {error_msg[:200]}...")
+
+            # Para archivos Excel, el ExcelLoader ya maneja errores internamente
+            # Para otros tipos, retornamos lista vacía para continuar procesamiento
             return []
     
     def load_documents(self, path: Optional[str] = None):
-        """Carga documentos desde un directorio"""
+        """
+        Carga documentos desde un directorio con procesamiento robusto.
+
+        Esta función implementa un approach de "mejor esfuerzo" donde problemas
+        con archivos individuales no impiden el procesamiento del resto.
+        """
         documents_path = Path(path or settings.documents_path)
         
         if not documents_path.exists():
@@ -132,8 +277,9 @@ class DocumentProcessor:
         
         try:
             all_documents = []
-            
-            # Obtener todos los archivos soportados
+            skipped_files = []
+
+            # Buscar todos los archivos soportados
             supported_files = []
             for file_path in documents_path.rglob("*"):
                 if (file_path.is_file() and 
@@ -150,26 +296,51 @@ class DocumentProcessor:
             
             # Procesar archivos uno por uno
             for file_path in supported_files:
-                logger.info(f"Processing: {file_path.name}")
-                
-                loader_class = self.loader_mapping[file_path.suffix.lower()]
-                docs = self._safe_load_file(file_path, loader_class)
-                
-                if docs:
-                    # Agregar metadata a cada documento
-                    for doc in docs:
-                        doc.metadata.update({
-                            'source_file': str(file_path),
-                            'file_type': file_path.suffix.lower(),
-                            'file_name': file_path.name
-                        })
-                    
-                    all_documents.extend(docs)
-                    logger.info(f"Added {len(docs)} documents from {file_path.name}")
-                else:
-                    logger.warning(f"Skipped {file_path.name} (no content extracted)")
+                try:
+                    logger.debug(f"Processing: {file_path.name}")
+
+                    loader_class = self.loader_mapping[file_path.suffix.lower()]
+                    docs = self._safe_load_file(file_path, loader_class)
+
+                    if docs:
+                        # Enriquecer metadata de cada documento
+                        for doc in docs:
+                            doc.metadata.update(
+                                {
+                                    "source_file": str(file_path),
+                                    "file_type": file_path.suffix.lower(),
+                                    "file_name": file_path.name,
+                                    "processed_at": time.time(),
+                                }
+                            )
+
+                        all_documents.extend(docs)
+                        logger.info(
+                            f"✓ Added {len(docs)} documents from {file_path.name}"
+                        )
+                    else:
+                        skipped_files.append(file_path.name)
+                        logger.warning(
+                            f"✗ Skipped {file_path.name} (no content extracted)"
+                        )
+
+                except Exception as e:
+                    skipped_files.append(file_path.name)
+                    logger.error(f"✗ Failed to process {file_path.name}: {e}")
+                    continue
+
+            # Resumen final del procesamiento
+            logger.info(f"Document loading completed:")
+            logger.info(
+                f"  - Successfully processed: {len(supported_files) - len(skipped_files)} files"
+            )
+            logger.info(f"  - Total documents loaded: {len(all_documents)}")
+            if skipped_files:
+                logger.info(
+                    f"  - Skipped files: {len(skipped_files)} ({', '.join(skipped_files[:3])}{'...' if len(skipped_files) > 3 else ''})"
+                )
+
             
-            logger.info(f"Total documents loaded: {len(all_documents)}")
             return all_documents
             
         except Exception as e:
@@ -177,7 +348,7 @@ class DocumentProcessor:
             raise DocumentProcessingException(f"Failed to load documents: {e}")
     
     def split_documents(self, documents):
-        """Divide documentos en chunks"""
+        """Divide documentos en chunks con monitoreo de performance"""
         try:
             if not documents:
                 logger.warning("No documents to split")
@@ -190,11 +361,18 @@ class DocumentProcessor:
             batch_size = 10
             
             for i in range(0, len(documents), batch_size):
-                batch = documents[i:i + batch_size]
+                batch_num = (i // batch_size) + 1
+                batch = documents[i : i + batch_size]
+
+                
                 try:
                     batch_chunks = self.text_splitter.split_documents(batch)
                     all_chunks.extend(batch_chunks)
-                    logger.info(f"Processed batch {i//batch_size + 1}: {len(batch_chunks)} chunks")
+                    logger.debug(
+                        f"Batch {batch_num} produced {len(batch_chunks)} chunks"
+                    )
+
+                    
                 except Exception as e:
                     logger.error(f"Error processing batch {i//batch_size + 1}: {e}")
                     continue
@@ -205,7 +383,12 @@ class DocumentProcessor:
             valid_chunks = [chunk for chunk in all_chunks if chunk.page_content.strip()]
             
             if len(valid_chunks) != len(all_chunks):
-                logger.warning(f"Removed {len(all_chunks) - len(valid_chunks)} empty chunks")
+                removed_count = len(all_chunks) - len(valid_chunks)
+                logger.info(f"Removed {removed_count} empty chunks")
+
+            logger.info(
+                f"Document splitting completed: {len(valid_chunks)} valid chunks ready"
+            )
             
             return valid_chunks
             
@@ -235,6 +418,7 @@ class DocumentProcessor:
             raise DocumentProcessingException(
                 f"Failed to load data from PostgreSQL: {e}"
             )
+
     
     def process_documents(self, path: Optional[str] = None):
         """Pipeline completo de procesamiento"""
@@ -244,7 +428,9 @@ class DocumentProcessor:
             # Cargar documentos
             documents = self.load_documents(path)
             if not documents:
-                logger.warning("No documents to process")
+                logger.warning(
+                    "No documents loaded - pipeline completed with empty result"
+                )
                 return []
             
             # Dividir en chunks
@@ -254,6 +440,7 @@ class DocumentProcessor:
                 return []
             
             logger.info(f"Document processing completed: {len(chunks)} chunks ready for indexing")
+            
             return chunks
             
         except Exception as e:
@@ -270,23 +457,39 @@ class DocumentProcessor:
         files_info = []
         total_size = 0
         
+        supported_count = 0
+        unsupported_count = 0
+        
         for file_path in documents_path.rglob("*"):
-            if (file_path.is_file() and 
-                file_path.suffix.lower() in self.loader_mapping and
-                not file_path.name.startswith('.') and
-                file_path.name != '.gitkeep'):
-                
+            if (
+                file_path.is_file()
+                and not file_path.name.startswith(".")
+                and file_path.name != ".gitkeep"
+            ):
                 size_mb = file_path.stat().st_size / 1024 / 1024
                 total_size += size_mb
-                
-                files_info.append({
-                    'name': file_path.name,
-                    'type': file_path.suffix.lower(),
-                    'size_mb': round(size_mb, 2)
-                })
-        
+
+                is_supported = file_path.suffix.lower() in self.loader_mapping
+                if is_supported:
+                    supported_count += 1
+                else:
+                    unsupported_count += 1
+
+                files_info.append(
+                    {
+                        "name": file_path.name,
+                        "type": file_path.suffix.lower(),
+                        "size_mb": round(size_mb, 2),
+                        "supported": is_supported,
+                    }
+                )
+
         return {
-            'total_files': len(files_info),
-            'total_size_mb': round(total_size, 2),
-            'files': files_info
+            "total_files": len(files_info),
+            "supported_files": supported_count,
+            "unsupported_files": unsupported_count,
+            "total_size_mb": round(total_size, 2),
+            "supported_formats": list(self.loader_mapping.keys()),
+            "files": files_info,
+            "pandas_available": PANDAS_AVAILABLE,
         }

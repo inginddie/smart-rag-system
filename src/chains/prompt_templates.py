@@ -5,9 +5,9 @@ Enhanced Academic Prompt Templates for Intent-Based Responses
 Versión expandida con templates robustos y sistema de validación
 """
 
-from typing import Dict, Optional, List
-from enum import Enum
 from dataclasses import dataclass
+from enum import Enum
+from typing import Dict, List, Optional
 
 from src.utils.intent_detector import IntentType
 from src.utils.logger import setup_logger
@@ -18,25 +18,30 @@ logger = setup_logger()
 @dataclass
 class TemplateMetadata:
     """Metadata para cada template académico"""
+
     sections: List[str]
     citation_requirements: Dict[str, bool]
     quality_criteria: List[str]
     expected_length: str  # "short", "medium", "long"
-    academic_rigor: str   # "basic", "intermediate", "advanced"
+    academic_rigor: str  # "basic", "intermediate", "advanced"
 
 
 class EnhancedPromptTemplateSelector:
     """
     Selector expandido con templates académicos robustos y sistema de validación
     """
-    
+
     def __init__(self):
         self.templates = self._initialize_enhanced_templates()
         self.template_metadata = self._initialize_metadata()
         self.default_template = self._get_default_academic_template()
-    
-    def select_template(self, intent_type: IntentType, base_prompt: str, 
-                       user_expertise: str = "intermediate") -> str:
+
+    def select_template(
+        self,
+        intent_type: IntentType,
+        base_prompt: str,
+        user_expertise: str = "intermediate",
+    ) -> str:
         """
         Selecciona template con consideración de expertise del usuario
         """
@@ -44,78 +49,121 @@ class EnhancedPromptTemplateSelector:
             if intent_type == IntentType.UNKNOWN or intent_type not in self.templates:
                 logger.debug(f"Using default template for intent: {intent_type.value}")
                 return base_prompt
-            
+
             # Obtener template base
             base_template = self.templates[intent_type]
-            
+
             # Ajustar según expertise del usuario
             adapted_template = self._adapt_template_for_expertise(
                 base_template, user_expertise
             )
-            
+
             logger.debug(f"Selected enhanced template for intent: {intent_type.value}")
             return adapted_template
-            
+
         except Exception as e:
-            logger.error(f"Error selecting enhanced template for {intent_type.value}: {e}")
+            logger.error(
+                f"Error selecting enhanced template for {intent_type.value}: {e}"
+            )
             return base_prompt
-    
+
     def get_template_metadata(self, intent_type: IntentType) -> TemplateMetadata:
         """Obtiene metadata del template para validación"""
-        return self.template_metadata.get(intent_type, TemplateMetadata(
-            sections=["General Response"],
-            citation_requirements={"basic_sources": True},
-            quality_criteria=["Relevance", "Clarity"],
-            expected_length="medium",
-            academic_rigor="intermediate"
-        ))
-    
+        return self.template_metadata.get(
+            intent_type,
+            TemplateMetadata(
+                sections=["General Response"],
+                citation_requirements={"basic_sources": True},
+                quality_criteria=["Relevance", "Clarity"],
+                expected_length="medium",
+                academic_rigor="intermediate",
+            ),
+        )
+
     def _initialize_enhanced_templates(self) -> Dict[IntentType, str]:
         """Inicializa templates académicos expandidos y robustos"""
         return {
             IntentType.DEFINITION: self._get_enhanced_definition_template(),
             IntentType.COMPARISON: self._get_enhanced_comparison_template(),
             IntentType.STATE_OF_ART: self._get_enhanced_state_of_art_template(),
-            IntentType.GAP_ANALYSIS: self._get_enhanced_gap_analysis_template()
+            IntentType.GAP_ANALYSIS: self._get_enhanced_gap_analysis_template(),
         }
-    
+
     def _initialize_metadata(self) -> Dict[IntentType, TemplateMetadata]:
         """Inicializa metadata para cada template"""
         return {
             IntentType.DEFINITION: TemplateMetadata(
-                sections=["Definición Formal", "Contexto Histórico", "Características Técnicas", 
-                         "Aplicaciones", "Referencias"],
-                citation_requirements={"definition_sources": True, "historical_papers": True},
-                quality_criteria=["Clarity", "Completeness", "Academic Rigor", "Citations"],
+                sections=[
+                    "Definición Formal",
+                    "Contexto Histórico",
+                    "Características Técnicas",
+                    "Aplicaciones",
+                    "Referencias",
+                ],
+                citation_requirements={
+                    "definition_sources": True,
+                    "historical_papers": True,
+                },
+                quality_criteria=[
+                    "Clarity",
+                    "Completeness",
+                    "Academic Rigor",
+                    "Citations",
+                ],
                 expected_length="medium",
-                academic_rigor="intermediate"
+                academic_rigor="intermediate",
             ),
             IntentType.COMPARISON: TemplateMetadata(
-                sections=["Introducción", "Matriz Comparativa", "Análisis Detallado", 
-                         "Recomendaciones", "Conclusiones"],
-                citation_requirements={"comparative_studies": True, "empirical_data": True},
+                sections=[
+                    "Introducción",
+                    "Matriz Comparativa",
+                    "Análisis Detallado",
+                    "Recomendaciones",
+                    "Conclusiones",
+                ],
+                citation_requirements={
+                    "comparative_studies": True,
+                    "empirical_data": True,
+                },
                 quality_criteria=["Balance", "Evidence-based", "Systematic Analysis"],
                 expected_length="long",
-                academic_rigor="advanced"
+                academic_rigor="advanced",
             ),
             IntentType.STATE_OF_ART: TemplateMetadata(
-                sections=["Resumen Ejecutivo", "Evolución Histórica", "Enfoques Actuales", 
-                         "Tendencias", "Direcciones Futuras"],
+                sections=[
+                    "Resumen Ejecutivo",
+                    "Evolución Histórica",
+                    "Enfoques Actuales",
+                    "Tendencias",
+                    "Direcciones Futuras",
+                ],
                 citation_requirements={"recent_papers": True, "surveys": True},
-                quality_criteria=["Comprehensive Coverage", "Temporal Analysis", "Trend Identification"],
+                quality_criteria=[
+                    "Comprehensive Coverage",
+                    "Temporal Analysis",
+                    "Trend Identification",
+                ],
                 expected_length="long",
-                academic_rigor="advanced"
+                academic_rigor="advanced",
             ),
             IntentType.GAP_ANALYSIS: TemplateMetadata(
-                sections=["Limitaciones Identificadas", "Gaps por Categoría", 
-                         "Oportunidades", "Roadmap de Investigación"],
+                sections=[
+                    "Limitaciones Identificadas",
+                    "Gaps por Categoría",
+                    "Oportunidades",
+                    "Roadmap de Investigación",
+                ],
                 citation_requirements={"limitation_studies": True, "future_work": True},
-                quality_criteria=["Gap Identification", "Opportunity Assessment", "Feasibility"],
+                quality_criteria=[
+                    "Gap Identification",
+                    "Opportunity Assessment",
+                    "Feasibility",
+                ],
                 expected_length="medium",
-                academic_rigor="advanced"
-            )
+                academic_rigor="advanced",
+            ),
         }
-    
+
     def _get_enhanced_definition_template(self) -> str:
         """Template expandido para definiciones académicas"""
         return """Eres un asistente de investigación académica especializado en proporcionar DEFINICIONES ACADÉMICAS RIGUROSAS para investigación en inteligencia artificial aplicada al desarrollo de software.
@@ -444,19 +492,27 @@ Responde con rigor académico y precisión científica."""
             # Agregar más explicaciones básicas
             adaptation = "\n\n**NIVEL NOVICE - INSTRUCCIONES ADICIONALES:**\n"
             adaptation += "- Explica conceptos técnicos básicos cuando sea necesario\n"
-            adaptation += "- Proporciona contexto introductorio para términos especializados\n"
-            adaptation += "- Incluye examples simples para ilustrar concepts complejos\n"
+            adaptation += (
+                "- Proporciona contexto introductorio para términos especializados\n"
+            )
+            adaptation += (
+                "- Incluye examples simples para ilustrar concepts complejos\n"
+            )
             return template + adaptation
-            
+
         elif expertise == "expert":
             # Agregar enfoque en detalles técnicos
             adaptation = "\n\n**NIVEL EXPERT - INSTRUCCIONES ADICIONALES:**\n"
-            adaptation += "- Proporciona análisis técnico profundo y detalles metodológicos\n"
+            adaptation += (
+                "- Proporciona análisis técnico profundo y detalles metodológicos\n"
+            )
             adaptation += "- Incluye mathematical formulations cuando sea relevante\n"
             adaptation += "- Focus en implications para research advancement\n"
-            adaptation += "- Assume familiarity con terminology y concepts fundamentales\n"
+            adaptation += (
+                "- Assume familiarity con terminology y concepts fundamentales\n"
+            )
             return template + adaptation
-        
+
         # intermediate - usar template as-is
         return template
 
