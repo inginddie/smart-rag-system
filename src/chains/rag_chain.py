@@ -431,6 +431,9 @@ Responde con rigor académico, precisión científica y enfoque específico en i
                     if len(doc.page_content) > 200
                     else doc.page_content
                 ),
+                "page_number": doc.metadata.get("page_number"),
+                "section_title": doc.metadata.get("section_title"),
+                "doc_type": doc.metadata.get("doc_type"),
                 "metadata": doc.metadata,
             }
             analysis["context_documents"].append(doc_info)

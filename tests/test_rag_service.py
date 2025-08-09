@@ -82,7 +82,17 @@ class TestRAGService:
 
         from src.storage.document_processor import Document
 
-        sample_docs = [Document(page_content="Contenido de ejemplo", metadata={"source_file": "doc1.txt"})]
+        sample_docs = [
+            Document(
+                page_content="Contenido de ejemplo",
+                metadata={
+                    "source_file": "doc1.txt",
+                    "doc_type": "text",
+                    "page_number": 1,
+                    "section_title": "Intro",
+                },
+            )
+        ]
 
         def fake_invoke(question):
             return {
@@ -103,3 +113,6 @@ class TestRAGService:
         assert response["question"] == "Pregunta de prueba"
         assert response["model_info"]["selected_model"] == "fake-model"
         assert response["sources"][0]["metadata"]["source_file"] == "doc1.txt"
+        assert response["sources"][0]["doc_type"] == "text"
+        assert response["sources"][0]["page_number"] == 1
+        assert response["sources"][0]["section_title"] == "Intro"

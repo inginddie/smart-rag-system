@@ -30,6 +30,9 @@ def test_image_uses_parser(tmp_path):
     assert parser.parse_calls[0][0] == str(img)
     assert docs[0].metadata["ocr"] is True
     assert docs[0].metadata["ocr_lang"] == "spa+eng"
+    assert docs[0].metadata["doc_type"] == "image"
+    assert docs[0].metadata["page_number"] == 1
+    assert "section_title" in docs[0].metadata
 
 
 def test_pdf_with_ocr(tmp_path):
@@ -43,3 +46,6 @@ def test_pdf_with_ocr(tmp_path):
     assert parser.parse_calls[0][0] == str(pdf)
     assert docs[0].metadata["ocr"] is True
     assert docs[0].metadata["ocr_lang"] == "spa+eng"
+    assert docs[0].metadata["doc_type"] == "pdf"
+    assert docs[0].metadata["page_number"] == 1
+    assert "section_title" in docs[0].metadata

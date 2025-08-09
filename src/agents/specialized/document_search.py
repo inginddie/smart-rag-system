@@ -520,9 +520,12 @@ class DocumentSearchAgent(BaseAgent):
         for i, doc in enumerate(context_docs):
             # Calcular relevancia basada en múltiples factores
             relevance_score = self._calculate_relevance_score(doc, query, position=i)
-            
+
             source_info = {
                 "content": doc.page_content[:200] + "..." if len(doc.page_content) > 200 else doc.page_content,
+                "page_number": doc.metadata.get("page_number"),
+                "section_title": doc.metadata.get("section_title"),
+                "doc_type": doc.metadata.get("doc_type"),
                 "metadata": doc.metadata,
                 "relevance": self._score_to_category(relevance_score),
                 "relevance_score": round(relevance_score, 3)

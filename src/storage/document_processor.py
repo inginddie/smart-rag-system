@@ -73,7 +73,7 @@ class ExcelLoader:
                     page_content=error_msg,
                     metadata={
                         "source": self.path,
-                        "type": "excel",
+                        "doc_type": "excel",
                         "error": "missing_dependency",
                         "required_packages": ["pandas", "openpyxl"],
                     },
@@ -109,7 +109,7 @@ class ExcelLoader:
                     page_content=content,
                     metadata={
                         "source": self.path,
-                        "type": "excel",
+                        "doc_type": "excel",
                         "rows": df.shape[0] if not df.empty else 0,
                         "columns": df.shape[1] if not df.empty else 0,
                     },
@@ -124,7 +124,7 @@ class ExcelLoader:
                     page_content=error_msg,
                     metadata={
                         "source": self.path,
-                        "type": "excel",
+                        "doc_type": "excel",
                         "error": "processing_error",
                         "error_details": str(e),
                     },
@@ -173,7 +173,7 @@ class DocumentProcessor:
                                 chunks.append(
                                     Document(
                                         page_content=paragraph.strip(),
-                                        metadata=doc.metadata,
+                                        metadata=doc.metadata.copy(),
                                     )
                                 )
                     return chunks
@@ -234,6 +234,21 @@ class DocumentProcessor:
             f"Document processor initialized with support for: {', '.join(supported_formats)}"
         )
 
+    def _infer_doc_type(self, suffix: str) -> str:
+        """Map file suffix to a standardized document type."""
+        suffix = suffix.lower()
+        if suffix in {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp", ".gif"}:
+            return "image"
+        if suffix == ".pdf":
+            return "pdf"
+        if suffix in {".xls", ".xlsx"}:
+            return "excel"
+        if suffix == ".docx":
+            return "docx"
+        if suffix == ".txt":
+            return "text"
+        return suffix.lstrip('.')
+
     def _safe_load_file(self, file_path: Path, loader_class):
         """
         Carga segura de archivos con manejo comprehensivo de errores.
@@ -277,6 +292,17 @@ class DocumentProcessor:
                         doc.metadata.setdefault("ocr_lang", self.ocr_lang)
                     else:
                         doc.metadata.setdefault("ocr", False)
+
+                    # Ensure standard metadata fields
+                    doc.metadata.setdefault(
+                        "doc_type", self._infer_doc_type(file_path.suffix.lower())
+                    )
+                    doc.metadata.setdefault(
+                        "page_number", doc.metadata.get("page", 1)
+                    )
+                    doc.metadata.pop("page", None)
+                    doc.metadata.setdefault("section_title", None)
+
                     valid_docs.append(doc)
                 else:
                     logger.debug(f"Skipping empty document from {file_path}")
@@ -345,9 +371,13 @@ class DocumentProcessor:
                             doc.metadata.update(
                                 {
                                     "source_file": str(file_path),
-                                    "file_type": file_path.suffix.lower(),
+                                    "doc_type": doc.metadata.get(
+                                        "doc_type", self._infer_doc_type(file_path.suffix.lower())
+                                    ),
                                     "file_name": file_path.name,
                                     "processed_at": time.time(),
+                                    "page_number": doc.metadata.get("page_number", 1),
+                                    "section_title": doc.metadata.get("section_title"),
                                 }
                             )
 
@@ -404,6 +434,15 @@ class DocumentProcessor:
                 
                 try:
                     batch_chunks = self.text_splitter.split_documents(batch)
+                    # Ensure metadata propagation
+                    for chunk in batch_chunks:
+                        chunk.metadata.setdefault("doc_type", chunk.metadata.get("doc_type"))
+                        chunk.metadata.setdefault(
+                            "page_number", chunk.metadata.get("page_number", 1)
+                        )
+                        chunk.metadata.setdefault(
+                            "section_title", chunk.metadata.get("section_title")
+                        )
                     all_chunks.extend(batch_chunks)
                     logger.debug(
                         f"Batch {batch_num} produced {len(batch_chunks)} chunks"
