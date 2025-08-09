@@ -78,7 +78,17 @@ def parse_image(path: str, lang: str) -> List[Document]:
 
     text = pytesseract.image_to_string(gray, lang=lang)
 
-    return [Document(page_content=text, metadata={"source": path, "type": "image"})]
+    return [
+        Document(
+            page_content=text,
+            metadata={
+                "source": path,
+                "type": "image",
+                "ocr": True,
+                "ocr_lang": lang,
+            },
+        )
+    ]
 
 
 def parse_pdf(path: str, lang: str) -> List[Document]:
@@ -94,7 +104,12 @@ def parse_pdf(path: str, lang: str) -> List[Document]:
                 documents.append(
                     Document(
                         page_content=text,
-                        metadata={"source": path, "page": idx, "type": "pdf"},
+                        metadata={
+                            "source": path,
+                            "page": idx,
+                            "type": "pdf",
+                            "ocr": False,
+                        },
                     )
                 )
             return documents

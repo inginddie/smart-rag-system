@@ -2,6 +2,7 @@
 import os
 from typing import List, Optional
 from pathlib import Path
+from functools import partial
 
 try:
     import pandas as pd
@@ -131,18 +132,34 @@ class ExcelLoader:
             ]
 
 
+class ParserLoader:
+    """Loader that delegates to :mod:`document_parser` for OCR processing."""
+
+    def __init__(self, path: str, parser, lang: str):
+        self.path = path
+        self.parser = parser
+        self.lang = lang
+
+    def load(self):
+        return self.parser.parse(self.path, lang=self.lang)
+
+
 import time
 
 from config.settings import settings
 from src.utils.logger import setup_logger
 from src.utils.exceptions import DocumentProcessingException
+from src.storage import document_parser as DocumentParser
 
 logger = setup_logger()
 
 class DocumentProcessor:
     """Procesador de documentos con múltiples formatos"""
-    
-    def __init__(self):
+
+    def __init__(self, parser=None, ocr_lang: str = "spa+eng"):
+        self.parser = parser or DocumentParser
+        self.ocr_lang = ocr_lang
+
         if RecursiveCharacterTextSplitter is None:
             class _SimpleSplitter:
                 def split_documents(self, docs):
@@ -205,6 +222,12 @@ class DocumentProcessor:
                 "Install pandas and openpyxl to enable full Excel processing."
             )
 
+        parser_loader = partial(ParserLoader, parser=self.parser, lang=self.ocr_lang)
+        self.loader_mapping[".jpg"] = parser_loader
+        self.loader_mapping[".jpeg"] = parser_loader
+        self.loader_mapping[".png"] = parser_loader
+        self.loader_mapping[".tiff"] = parser_loader
+
         # Log final de formatos soportados
         supported_formats = list(self.loader_mapping.keys())
         logger.info(
@@ -225,12 +248,21 @@ class DocumentProcessor:
             if file_path.suffix.lower() == '.pdf' and file_path.stat().st_size > 10 * 1024 * 1024:  # > 10MB
                 logger.warning(f"Large PDF detected: {file_path.name}. Processing with special handling...")
 
-            if loader_class is None:
-                logger.error(f"No loader available for {file_path.suffix}")
-                return []
+            use_ocr = (
+                file_path.suffix.lower() == '.pdf'
+                and self.parser.needs_ocr(str(file_path))
+            )
 
-            loader = loader_class(str(file_path))
-            docs = loader.load()
+            if use_ocr:
+                logger.info(f"OCR required for {file_path.name}, using parser")
+                docs = self.parser.parse(str(file_path), lang=self.ocr_lang)
+            else:
+                if loader_class is None:
+                    logger.error(f"No loader available for {file_path.suffix}")
+                    return []
+
+                loader = loader_class(str(file_path))
+                docs = loader.load()
             
             if not docs:
                 logger.warning(f"No content extracted from {file_path}")
@@ -240,6 +272,11 @@ class DocumentProcessor:
             valid_docs = []
             for doc in docs:
                 if doc.page_content and doc.page_content.strip():
+                    if use_ocr:
+                        doc.metadata.setdefault("ocr", True)
+                        doc.metadata.setdefault("ocr_lang", self.ocr_lang)
+                    else:
+                        doc.metadata.setdefault("ocr", False)
                     valid_docs.append(doc)
                 else:
                     logger.debug(f"Skipping empty document from {file_path}")
