@@ -37,6 +37,8 @@ source venv/bin/activate  # Linux/Mac
 pip install -r requirements.txt
 ```
 
+> **Nota:** Para el procesamiento OCR se requiere tener instalado **Tesseract OCR** en el sistema (`sudo apt install tesseract-ocr` en Debian/Ubuntu, `brew install tesseract` en macOS).
+
 ### 4. Configurar variables de entorno
 ```bash
 # Copia el template de configuración
