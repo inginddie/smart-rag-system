@@ -614,6 +614,9 @@ class GradioRAGApp:
                                 elem_classes=["system-info"],
                                 visible=True,
                             )
+                            
+                            # Create FAQ display
+                            faq_display = gr.Markdown(value=self.get_faq_markdown())
 
                     # Ejemplos académicos organizados por tipo + nuevos ejemplos de advisor
                     with gr.Accordion(
@@ -685,8 +688,6 @@ class GradioRAGApp:
                         outputs=[chatbot, msg, faq_display, system_info_display],
                     )
 
-                    # Create FAQ display
-                    faq_display = gr.Markdown(value=self.get_faq_markdown())
 
                 # Tab de administración del sistema - ENHANCED con analytics
                 with gr.TabItem("⚙️ Administración + Analytics"):

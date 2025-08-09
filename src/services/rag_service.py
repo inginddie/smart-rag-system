@@ -6,6 +6,7 @@ MODIFICATION of existing src/services/rag_service.py
 
 from typing import Any, Dict, List, Optional
 
+from config.settings import settings
 from src.chains.rag_chain import RAGChain
 from src.storage.vector_store import VectorStoreManager
 from src.utils.exceptions import RAGException
@@ -81,8 +82,6 @@ class RAGService:
             # Check 2: Alternative - check if vector DB directory has data
             import os
 
-            from config.settings import settings
-
             vector_db_path = getattr(settings, "vector_db_path", "./data/vector_db")
             chroma_db_file = os.path.join(vector_db_path, "chroma.sqlite3")
             has_db_file = os.path.exists(chroma_db_file)
@@ -148,7 +147,7 @@ class RAGService:
                     
                     # Step 2: Generate refinement suggestions if needed
                     refinement_result = None
-                    if not validation_result.validation_passed:
+                    if not validation_result.is_valid:
                         refinement_result = self.refinement_suggester.generate_refinements(
                             question, validation_result
                         )
@@ -158,10 +157,10 @@ class RAGService:
                         'preprocessing_enabled': True,
                         'validation_result': {
                             'is_valid': validation_result.is_valid,
-                            'confidence_score': validation_result.confidence_score,
+                            'confidence_score': validation_result.confidence,
                             'issues_count': len(validation_result.issues),
-                            'should_show_modal': validation_result.should_show_modal,
-                            'validation_passed': validation_result.validation_passed,
+                            'should_show_modal': not validation_result.is_valid,
+                            'validation_passed': validation_result.is_valid,
                             'processing_time_ms': validation_result.processing_time_ms,
                             'issues': validation_result.issues  # Detailed issues for UI
                         },
@@ -194,7 +193,7 @@ class RAGService:
                     # For HU5 implementation, we continue with original query but provide suggestions
                     # In production, this could be enhanced to wait for user choice
                     
-                    logger.info(f"HU5: Query preprocessing completed - confidence: {validation_result.confidence_score:.3f}, suggestions: {refinement_result.suggestions_available if refinement_result else False}")
+                    logger.info(f"HU5: Query preprocessing completed - confidence: {validation_result.confidence:.3f}, suggestions: {refinement_result.suggestions_available if refinement_result else False}")
                     
                 except Exception as e:
                     logger.error(f"HU5: Error in query preprocessing: {e}")
@@ -373,7 +372,7 @@ class RAGService:
             
             # Generate suggestions if validation failed
             refinement_result = None
-            if not validation_result.validation_passed:
+            if not validation_result.is_valid:
                 refinement_result = self.refinement_suggester.generate_refinements(
                     question, validation_result
                 )
@@ -382,9 +381,9 @@ class RAGService:
                 'preprocessing_enabled': True,
                 'validation': {
                     'is_valid': validation_result.is_valid,
-                    'confidence_score': validation_result.confidence_score,
-                    'validation_passed': validation_result.validation_passed,
-                    'should_show_modal': validation_result.should_show_modal,
+                    'confidence_score': validation_result.confidence,
+                    'validation_passed': validation_result.is_valid,
+                    'should_show_modal': not validation_result.is_valid,
                     'issues': validation_result.issues,
                     'processing_time_ms': validation_result.processing_time_ms
                 },
