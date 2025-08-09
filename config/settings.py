@@ -59,6 +59,12 @@ class Settings(BaseSettings):
     chunk_overlap: int = Field(default=440, env="CHUNK_OVERLAP")
     max_documents: int = Field(default=10, env="MAX_DOCUMENTS")
 
+    # OCR Configuration
+    ocr_languages: str = Field(default="spa+eng", env="OCR_LANGUAGES")
+    ocr_dpi: int = Field(default=300, env="OCR_DPI")
+    ocr_min_glyph_density: float = Field(default=0.1, env="OCR_MIN_GLYPH_DENSITY")
+    max_image_size_mb: int = Field(default=5, env="MAX_IMAGE_SIZE_MB")
+
     # Model Selection Configuration
     enable_smart_selection: bool = Field(default=True, env="ENABLE_SMART_SELECTION")
     complexity_threshold: float = Field(default=0.6, env="COMPLEXITY_THRESHOLD")
