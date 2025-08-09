@@ -39,6 +39,7 @@ class TestVectorStore:
     def test_document_processor_with_excel_file(self, temp_dir):
         """Test procesamiento de archivo Excel"""
         pd = pytest.importorskip("pandas")
+        pytest.importorskip("openpyxl")  # Skip if openpyxl not available
 
         df = pd.DataFrame({"col1": [1, 2], "col2": ["a", "b"]})
         excel_path = Path(temp_dir) / "test.xlsx"
@@ -53,6 +54,7 @@ class TestVectorStore:
     def test_load_from_postgres(self, monkeypatch):
         """Test carga de datos desde PostgreSQL"""
         pd = pytest.importorskip("pandas")
+        pytest.importorskip("psycopg2")  # Skip if psycopg2 not available
 
         sample_df = pd.DataFrame({"text": ["fila1", "fila2"]})
 
@@ -68,12 +70,11 @@ class TestVectorStore:
             def __exit__(self, exc_type, exc, tb):
                 pass
 
-        monkeypatch.setattr(
-            "psycopg2.connect",
-            lambda conn_str: FakeConn(),
-        )
-
-        processor = DocumentProcessor()
-        docs = processor.load_from_postgres("dsn", "SELECT 1")
-        assert len(docs) == 1
-        assert "fila1" in docs[0].page_content
+        # Use a different approach that works with missing modules
+        with patch('src.storage.document_processor.psycopg2') as mock_psycopg2:
+            mock_psycopg2.connect.return_value = FakeConn()
+            
+            processor = DocumentProcessor()
+            docs = processor.load_from_postgres("dsn", "SELECT 1")
+            assert len(docs) == 1
+            assert "fila1" in docs[0].page_content

@@ -112,13 +112,13 @@ def test_usage_analytics_core():
         # Cleanup
         os.unlink(analytics.storage_path)
         
-        return True
+        assert True  # Test passed if no exceptions
         
     except Exception as e:
         print(f"❌ ERROR: {e}")
         import traceback
         traceback.print_exc()
-        return False
+        assert False, f"Test failed with error: {e}"
 
 def test_persistence():
     """Test data persistence and loading"""

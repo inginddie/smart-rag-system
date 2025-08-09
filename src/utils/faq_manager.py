@@ -3,6 +3,7 @@ import json
 from collections import Counter
 from pathlib import Path
 
+
 class FAQManager:
     """Gestiona el registro y obtención de preguntas frecuentes."""
 

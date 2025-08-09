@@ -40,13 +40,13 @@ def test_enhanced_query_method():
             assert hasattr(rag_service, method), f"Missing method: {method}"
         print(f"✅ All {len(new_methods)} new methods available")
         
-        return True
+        assert True  # Test passed if no exceptions
         
     except Exception as e:
         print(f"❌ ERROR: {e}")
         import traceback
         traceback.print_exc()
-        return False
+        assert False, f"Test failed with error: {e}"
 
 def test_query_method_signature():
     """Test that enhanced query method has correct signature"""

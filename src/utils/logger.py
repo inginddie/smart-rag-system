@@ -1,14 +1,18 @@
 # -*- coding: utf-8 -*-
 try:
     from loguru import logger
+
     _using_loguru = True
 except ImportError:  # pragma: no cover - fallback if loguru is missing
     import logging
+
     logger = logging.getLogger(__name__)
     _using_loguru = False
 
 import sys
+
 from config.settings import settings
+
 
 def setup_logger():
     """Configura el sistema de logging"""

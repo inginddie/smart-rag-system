@@ -4,14 +4,17 @@ Enhanced Gradio App with Query Advisor Integration
 MODIFICATION of existing ui/gradio_app.py
 """
 
+from typing import List, Tuple
+
 import gradio as gr
 from gradio.themes.soft import Soft
-from typing import List, Tuple
+
+from config.settings import settings
 from src.services.rag_service import RAGService
 from src.utils.logger import setup_logger
-from config.settings import settings
 
 logger = setup_logger()
+
 
 class GradioRAGApp:
     """
@@ -22,14 +25,14 @@ class GradioRAGApp:
     - **NUEVO: Query Advisor con sugerencias y analytics**
     - Feedback visual completo para transparencia del sistema
     """
-    
+
     def __init__(self):
         """
         Inicializa la aplicación con el servicio RAG enhanced.
         """
         self.rag_service = RAGService()
         self.initialized = False
-    
+
     def initialize_service(self) -> str:
         """
         Inicializa el servicio RAG y proporciona feedback detallado al usuario.
@@ -37,266 +40,305 @@ class GradioRAGApp:
         try:
             if self.rag_service.initialize():
                 self.initialized = True
-                return "✅ Sistema RAG inicializado correctamente con todas las funcionalidades avanzadas habilitadas:\n" + \
-                       "🎯 Detección de intención académica\n" + \
-                       "🔍 Expansión automática de consultas\n" + \
-                       "🤖 Selección inteligente de modelos\n" + \
-                       "💡 Query Advisor con sugerencias inteligentes\n" + \
-                       "📊 Analytics de uso y aprendizaje\n" + \
-                       "📚 Base de documentos indexada y lista"
+                return (
+                    "✅ Sistema RAG inicializado correctamente con todas las funcionalidades avanzadas habilitadas:\n"
+                    + "🎯 Detección de intención académica\n"
+                    + "🔍 Expansión automática de consultas\n"
+                    + "🤖 Selección inteligente de modelos\n"
+                    + "💡 Query Advisor con sugerencias inteligentes\n"
+                    + "📊 Analytics de uso y aprendizaje\n"
+                    + "📚 Base de documentos indexada y lista"
+                )
             else:
                 return "⚠️ Sistema inicializado pero no se encontraron documentos para indexar"
         except Exception as e:
             logger.error(f"Error initializing service: {e}")
             return f"❌ Error al inicializar: {str(e)}"
-    
+
     def _format_intent_info(self, intent_info: dict) -> str:
         """Formatea la información de detección de intención para presentación al usuario."""
         if not intent_info:
             return ""
-        
-        intent_type = intent_info.get('detected_intent', 'unknown')
-        confidence = intent_info.get('confidence', 0)
-        specialized_prompt = intent_info.get('specialized_prompt_used', False)
-        processing_time = intent_info.get('processing_time_ms', 0)
-        
+
+        intent_type = intent_info.get("detected_intent", "unknown")
+        confidence = intent_info.get("confidence", 0)
+        specialized_prompt = intent_info.get("specialized_prompt_used", False)
+        processing_time = intent_info.get("processing_time_ms", 0)
+
         intent_names = {
-            'definition': '📖 Definición Conceptual',
-            'comparison': '⚖️ Análisis Comparativo', 
-            'state_of_art': '🌟 Estado del Arte',
-            'gap_analysis': '🔍 Análisis de Gaps',
-            'unknown': '❓ Consulta General',
-            'error': '⚠️ Error de Clasificación'
+            "definition": "📖 Definición Conceptual",
+            "comparison": "⚖️ Análisis Comparativo",
+            "state_of_art": "🌟 Estado del Arte",
+            "gap_analysis": "🔍 Análisis de Gaps",
+            "unknown": "❓ Consulta General",
+            "error": "⚠️ Error de Clasificación",
         }
-        
-        intent_name = intent_names.get(intent_type, f'❓ {intent_type}')
-        
+
+        intent_name = intent_names.get(intent_type, f"❓ {intent_type}")
+
         info_parts = [f"**Tipo de consulta detectada:** {intent_name}"]
-        
+
         if confidence > 0:
-            confidence_emoji = "🎯" if confidence >= 0.8 else "🎲" if confidence >= 0.6 else "❓"
+            confidence_emoji = (
+                "🎯" if confidence >= 0.8 else "🎲" if confidence >= 0.6 else "❓"
+            )
             info_parts.append(f"**Confianza:** {confidence_emoji} {confidence:.0%}")
-        
-        if specialized_prompt and intent_type not in ['unknown', 'error']:
-            info_parts.append("**Respuesta optimizada:** ✨ Usando template académico especializado")
-        
+
+        if specialized_prompt and intent_type not in ["unknown", "error"]:
+            info_parts.append(
+                "**Respuesta optimizada:** ✨ Usando template académico especializado"
+            )
+
         if processing_time > 0:
             info_parts.append(f"**Tiempo de análisis:** ⚡ {processing_time:.1f}ms")
-        
+
         return "\n".join(info_parts)
-    
+
     def _format_expansion_info(self, expansion_info: dict) -> str:
         """Formatea la información de expansión de consulta para mostrar al usuario."""
-        if not expansion_info or expansion_info.get('expansion_count', 0) == 0:
+        if not expansion_info or expansion_info.get("expansion_count", 0) == 0:
             return ""
-        
-        expanded_terms = expansion_info.get('expanded_terms', [])
-        processing_time = expansion_info.get('processing_time_ms', 0)
-        strategy_used = expansion_info.get('strategy_used', 'unknown')
-        
+
+        expanded_terms = expansion_info.get("expanded_terms", [])
+        processing_time = expansion_info.get("processing_time_ms", 0)
+        strategy_used = expansion_info.get("strategy_used", "unknown")
+
         info_parts = [f"**Términos expandidos:** 🔍 {', '.join(expanded_terms[:5])}"]
-        
+
         if len(expanded_terms) > 5:
             info_parts.append(f"*... y {len(expanded_terms) - 5} términos más*")
-        
-        if strategy_used != 'unknown':
+
+        if strategy_used != "unknown":
             strategy_names = {
-                'conservative': 'Conservadora',
-                'moderate': 'Moderada', 
-                'comprehensive': 'Comprehensiva'
+                "conservative": "Conservadora",
+                "moderate": "Moderada",
+                "comprehensive": "Comprehensiva",
             }
             strategy_display = strategy_names.get(strategy_used, strategy_used)
             info_parts.append(f"**Estrategia:** 📊 {strategy_display}")
-        
+
         if processing_time > 0:
             info_parts.append(f"**Tiempo de expansión:** ⚡ {processing_time:.1f}ms")
-        
+
         return "\n".join(info_parts)
-    
+
     def _format_model_info(self, model_info: dict) -> str:
         """Formatea la información del modelo seleccionado para mostrar al usuario."""
         if not model_info:
             return ""
-        
-        model_name = model_info.get('selected_model', 'unknown')
-        complexity_score = model_info.get('complexity_score', 0)
-        reasoning = model_info.get('reasoning', '')
-        
+
+        model_name = model_info.get("selected_model", "unknown")
+        complexity_score = model_info.get("complexity_score", 0)
+        reasoning = model_info.get("reasoning", "")
+
         model_names = {
-            'gpt-4o': '🧠 GPT-4o (Análisis Académico Profundo)',
-            'gpt-4o-mini': '⚡ GPT-4o-mini (Respuesta Rápida y Eficiente)',
-            'gpt-3.5-turbo': '💨 GPT-3.5-turbo (Consultas Directas)'
+            "gpt-4o": "🧠 GPT-4o (Análisis Académico Profundo)",
+            "gpt-4o-mini": "⚡ GPT-4o-mini (Respuesta Rápida y Eficiente)",
+            "gpt-3.5-turbo": "💨 GPT-3.5-turbo (Consultas Directas)",
         }
-        
-        model_display = model_names.get(model_name, f'🤖 {model_name}')
-        
+
+        model_display = model_names.get(model_name, f"🤖 {model_name}")
+
         info_parts = [f"**Modelo seleccionado:** {model_display}"]
-        
+
         if complexity_score > 0:
-            complexity_emoji = "🔥" if complexity_score >= 0.7 else "⚡" if complexity_score >= 0.4 else "💨"
-            info_parts.append(f"**Complejidad detectada:** {complexity_emoji} {complexity_score:.0%}")
-        
+            complexity_emoji = (
+                "🔥"
+                if complexity_score >= 0.7
+                else "⚡" if complexity_score >= 0.4 else "💨"
+            )
+            info_parts.append(
+                f"**Complejidad detectada:** {complexity_emoji} {complexity_score:.0%}"
+            )
+
         if reasoning and len(reasoning) < 100:
             info_parts.append(f"**Razón:** {reasoning}")
-        
+
         return "\n".join(info_parts)
-    
+
     def _format_advisor_info(self, advisor_info: dict) -> str:
         """
         NUEVO: Formatea información del Query Advisor
         """
-        if not advisor_info or advisor_info.get('error'):
+        if not advisor_info or advisor_info.get("error"):
             return ""
-        
-        effectiveness_score = advisor_info.get('effectiveness_score', 0)
-        suggestions = advisor_info.get('suggestions', [])
-        tips = advisor_info.get('contextual_tips', [])
-        suggestion_shown = advisor_info.get('suggestion_shown', False)
-        
+
+        effectiveness_score = advisor_info.get("effectiveness_score", 0)
+        suggestions = advisor_info.get("suggestions", [])
+        tips = advisor_info.get("contextual_tips", [])
+        suggestion_shown = advisor_info.get("suggestion_shown", False)
+
         info_parts = []
-        
+
         # Effectiveness score con visual indicator
         if effectiveness_score > 0:
-            score_emoji = "🎯" if effectiveness_score >= 0.8 else "⚡" if effectiveness_score >= 0.6 else "🔧"
-            score_text = "Excelente" if effectiveness_score >= 0.8 else "Buena" if effectiveness_score >= 0.6 else "Mejorable"
-            info_parts.append(f"**Efectividad de consulta:** {score_emoji} {score_text} ({effectiveness_score:.1%})")
-        
+            score_emoji = (
+                "🎯"
+                if effectiveness_score >= 0.8
+                else "⚡" if effectiveness_score >= 0.6 else "🔧"
+            )
+            score_text = (
+                "Excelente"
+                if effectiveness_score >= 0.8
+                else "Buena" if effectiveness_score >= 0.6 else "Mejorable"
+            )
+            info_parts.append(
+                f"**Efectividad de consulta:** {score_emoji} {score_text} ({effectiveness_score:.1%})"
+            )
+
         # Suggestions si las hay
         if suggestions:
             info_parts.append("**💡 Sugerencias de mejora:**")
             for i, suggestion in enumerate(suggestions[:2], 1):  # Max 2 suggestions
-                priority_emoji = "🔥" if suggestion.get('priority', 3) == 1 else "⚡"
-                info_parts.append(f"   {priority_emoji} *{suggestion.get('reason', 'Mejora sugerida')}*")
-                
+                priority_emoji = "🔥" if suggestion.get("priority", 3) == 1 else "⚡"
+                info_parts.append(
+                    f"   {priority_emoji} *{suggestion.get('reason', 'Mejora sugerida')}*"
+                )
+
                 # Show reformulated query if not too long
-                reformulated = suggestion.get('reformulated_query', '')
+                reformulated = suggestion.get("reformulated_query", "")
                 if len(reformulated) < 100:
-                    info_parts.append(f"      → \"{reformulated}\"")
-        
+                    info_parts.append(f'      → "{reformulated}"')
+
         # Contextual tips
         if tips:
             info_parts.append("**💭 Tips contextuales:**")
             for tip in tips[:1]:  # Show only first tip
                 info_parts.append(f"   📝 {tip.get('tip_text', '')}")
-                example = tip.get('example', '')
+                example = tip.get("example", "")
                 if example and len(example) < 80:
                     info_parts.append(f"      *Ejemplo: {example}*")
-        
+
         return "\n".join(info_parts)
-    
+
     def _format_analytics_summary(self) -> str:
         """
         NUEVO: Genera resumen de analytics para mostrar en UI
         """
         try:
             summary = self.rag_service.get_analytics_summary()
-            
-            if summary.get('status') in ['no_data', 'error']:
+
+            if summary.get("status") in ["no_data", "error"]:
                 return "_No hay datos de analytics disponibles aún._"
-            
-            total_queries = summary.get('total_queries', 0)
-            avg_effectiveness = summary.get('avg_effectiveness', 0)
-            adoption_rate = summary.get('suggestion_adoption_rate', 0)
-            
+
+            total_queries = summary.get("total_queries", 0)
+            avg_effectiveness = summary.get("avg_effectiveness", 0)
+            adoption_rate = summary.get("suggestion_adoption_rate", 0)
+
             info_parts = [
                 f"**📊 Analytics del Sistema:**",
                 f"• Total consultas procesadas: **{total_queries}**",
                 f"• Efectividad promedio: **{avg_effectiveness:.1%}**",
-                f"• Tasa adopción sugerencias: **{adoption_rate:.1%}**"
+                f"• Tasa adopción sugerencias: **{adoption_rate:.1%}**",
             ]
-            
+
             # Intent-specific stats
-            intent_stats = summary.get('intent_stats', {})
+            intent_stats = summary.get("intent_stats", {})
             if intent_stats:
                 info_parts.append("**Por tipo de consulta:**")
                 for intent, stats in list(intent_stats.items())[:3]:  # Top 3
-                    success_rate = stats.get('success_rate', 0)
-                    query_count = stats.get('query_count', 0)
-                    info_parts.append(f"• {intent}: {success_rate:.1%} éxito ({query_count} consultas)")
-            
+                    success_rate = stats.get("success_rate", 0)
+                    query_count = stats.get("query_count", 0)
+                    info_parts.append(
+                        f"• {intent}: {success_rate:.1%} éxito ({query_count} consultas)"
+                    )
+
             return "\n".join(info_parts)
-            
+
         except Exception as e:
             logger.error(f"Error generating analytics summary: {e}")
             return "_Error al generar resumen de analytics._"
-    
-    def chat_response(self, message: str, history: List[Tuple[str, str]]) -> Tuple[str, str]:
+
+    def chat_response(
+        self, message: str, history: List[Tuple[str, str]]
+    ) -> Tuple[str, str]:
         """
         Procesa las consultas del usuario con Query Advisor integrado.
-        
+
         ENHANCED: Ahora incluye information del Query Advisor en el panel lateral
         """
         if not self.initialized:
-            return "❌ El sistema no está inicializado. Por favor inicialízalo primero.", ""
-        
+            return (
+                "❌ El sistema no está inicializado. Por favor inicialízalo primero.",
+                "",
+            )
+
         if not message.strip():
             return "Por favor, escribe una pregunta académica.", ""
-        
+
         try:
             # Obtener respuesta completa con Query Advisor habilitado
-            result = self.rag_service.query(message, include_sources=True, include_advisor=True)
-            
+            result = self.rag_service.query(
+                message, include_sources=True, include_advisor=True
+            )
+
             # La respuesta principal es lo que el usuario realmente quiere leer
-            main_response = result['answer']
-            
+            main_response = result["answer"]
+
             # Construir información del sistema de manera modular
             system_info_parts = []
-            
+
             # Sección 1: Query Advisor (NUEVO - PRIORITARIO)
-            advisor_info = result.get('advisor_info', {})
-            if advisor_info and not advisor_info.get('error'):
+            advisor_info = result.get("advisor_info", {})
+            if advisor_info and not advisor_info.get("error"):
                 advisor_details = self._format_advisor_info(advisor_info)
                 if advisor_details:
                     system_info_parts.append("### 💡 Query Advisor")
                     system_info_parts.append(advisor_details)
-            
+
             # Sección 2: Análisis de la consulta (detección de intención)
-            intent_info = result.get('intent_info', {})
+            intent_info = result.get("intent_info", {})
             if intent_info:
                 intent_details = self._format_intent_info(intent_info)
                 if intent_details:
                     system_info_parts.append("### 🎯 Análisis de Consulta")
                     system_info_parts.append(intent_details)
-            
+
             # Sección 3: Expansión de consulta (términos adicionales utilizados)
-            expansion_info = result.get('expansion_info', {})
-            if expansion_info and expansion_info.get('expansion_count', 0) > 0:
+            expansion_info = result.get("expansion_info", {})
+            if expansion_info and expansion_info.get("expansion_count", 0) > 0:
                 expansion_details = self._format_expansion_info(expansion_info)
                 if expansion_details:
                     system_info_parts.append("### 🔍 Expansión de Consulta")
                     system_info_parts.append(expansion_details)
-            
+
             # Sección 4: Selección de modelo (por qué se eligió este modelo)
-            model_info = result.get('model_info', {})
+            model_info = result.get("model_info", {})
             if model_info:
                 model_details = self._format_model_info(model_info)
                 if model_details:
                     system_info_parts.append("### 🤖 Selección de Modelo")
                     system_info_parts.append(model_details)
-            
+
             # Sección 5: Fuentes consultadas (transparencia sobre los documentos utilizados)
-            sources = result.get('sources', [])
+            sources = result.get("sources", [])
             if sources:
                 system_info_parts.append("### 📚 Fuentes Consultadas")
                 source_list = []
-                for i, source in enumerate(sources[:3], 1):  # Mostrar máximo 3 fuentes principales
-                    file_name = source.get('metadata', {}).get('file_name', 'Documento desconocido')
+                for i, source in enumerate(
+                    sources[:3], 1
+                ):  # Mostrar máximo 3 fuentes principales
+                    file_name = source.get("metadata", {}).get(
+                        "file_name", "Documento desconocido"
+                    )
                     source_list.append(f"{i}. **{file_name}**")
                 system_info_parts.append("\n".join(source_list))
-                
+
                 if len(sources) > 3:
-                    system_info_parts.append(f"*... y {len(sources) - 3} fuentes adicionales*")
-            
+                    system_info_parts.append(
+                        f"*... y {len(sources) - 3} fuentes adicionales*"
+                    )
+
             # Combinar toda la información del sistema en un panel cohesivo
             system_info = "\n\n".join(system_info_parts) if system_info_parts else ""
-            
+
             return main_response, system_info
-            
+
         except Exception as e:
             logger.error(f"Error in chat response: {e}")
             error_msg = f"❌ Error al procesar la pregunta: {str(e)}"
             return error_msg, ""
-    
+
     def track_suggestion_adoption(self, query: str, adopted: bool) -> str:
         """
         NUEVO: Track cuando el usuario adopta una sugerencia
@@ -306,7 +348,7 @@ class GradioRAGApp:
             return f"✅ Feedback registrado: sugerencia {'adoptada' if adopted else 'rechazada'}"
         except Exception as e:
             return f"❌ Error registrando feedback: {str(e)}"
-    
+
     def reindex_documents(self) -> str:
         """Reindexar documentos cuando se agregan nuevos archivos."""
         try:
@@ -326,35 +368,41 @@ class GradioRAGApp:
             return "_No hay preguntas frecuentes registradas aún._"
         lines = "\n".join(f"- {q}" for q in faqs)
         return f"**Preguntas frecuentes:**\n{lines}"
-    
+
     def get_improvement_recommendations(self) -> str:
         """
         NUEVO: Obtiene recomendaciones de mejora del sistema
         """
         try:
             recommendations = self.rag_service.get_improvement_recommendations()
-            
+
             if not recommendations:
                 return "✅ **El sistema está funcionando óptimamente.** No hay recomendaciones de mejora en este momento."
-            
+
             lines = ["**🔧 Recomendaciones de Mejora:**"]
             for rec in recommendations[:3]:  # Max 3 recommendations
-                priority_emoji = "🔥" if rec.get('priority') == 'high' else "⚡" if rec.get('priority') == 'medium' else "💡"
-                lines.append(f"{priority_emoji} **{rec.get('category', 'General')}:** {rec.get('message', '')}")
-                
-                if 'metric' in rec:
+                priority_emoji = (
+                    "🔥"
+                    if rec.get("priority") == "high"
+                    else "⚡" if rec.get("priority") == "medium" else "💡"
+                )
+                lines.append(
+                    f"{priority_emoji} **{rec.get('category', 'General')}:** {rec.get('message', '')}"
+                )
+
+                if "metric" in rec:
                     lines.append(f"   *Métrica actual: {rec['metric']:.1%}*")
-            
+
             return "\n".join(lines)
-            
+
         except Exception as e:
             logger.error(f"Error getting recommendations: {e}")
             return "_Error al obtener recomendaciones._"
-    
+
     def create_interface(self) -> gr.Blocks:
         """
         Crea la interfaz de usuario completa con Query Advisor integrado.
-        
+
         ENHANCED: Incluye nuevo panel de Query Advisor y analytics
         """
         with gr.Blocks(
@@ -503,11 +551,12 @@ class GradioRAGApp:
             .system-info::-webkit-scrollbar-thumb:hover {
                 background: #555;
             }
-            """
+            """,
         ) as interface:
-            
+
             # Header principal con branding actualizado
-            gr.HTML("""
+            gr.HTML(
+                """
             <div style="text-align: center; margin-bottom: 2rem;">
                 <h1>🤖 Sistema RAG Avanzado + Query Advisor</h1>
                 <p>Especializado en IA para Historias de Usuario - Con Inteligencia Artificial Multicapa + Sugerencias Inteligentes</p>
@@ -519,13 +568,17 @@ class GradioRAGApp:
                     📊 Analytics y aprendizaje automático
                 </small></p>
             </div>
-            """)
-            
+            """
+            )
+
             with gr.Tabs():
                 # Tab principal - Chat Académico Inteligente + Advisor
                 with gr.TabItem("💬 Chat + Query Advisor"):
-                    gr.Markdown("### Asistente de Investigación con IA Multicapa + Advisor")
-                    gr.Markdown("""
+                    gr.Markdown(
+                        "### Asistente de Investigación con IA Multicapa + Advisor"
+                    )
+                    gr.Markdown(
+                        """
                     Haz preguntas académicas y observa cómo el sistema combina múltiples técnicas de IA + **Query Advisor**:
                     - 🎯 **Detecta automáticamente** el tipo de consulta (definición, comparación, estado del arte, gaps)
                     - 🔍 **Expande tu consulta** con sinónimos académicos y términos relacionados relevantes  
@@ -534,42 +587,50 @@ class GradioRAGApp:
                     - 💡 **NUEVO: Analiza efectividad** y sugiere mejoras automáticamente para consultas subóptimas
                     - 📊 **Aprende de tu uso** para mejorar sugerencias futuras
                     - 📊 **Muestra todo el proceso** para transparencia y reproducibilidad académica
-                    """)
-                    
+                    """
+                    )
+
                     with gr.Row():
                         with gr.Column(scale=2):
                             # Área principal de conversación
                             chatbot = gr.Chatbot(
                                 label="Conversación Académica Inteligente + Advisor",
                                 height=500,
-                                type='messages',
-                                show_label=True
+                                type="messages",
+                                show_label=True,
                             )
-                            
+
                             with gr.Row():
                                 msg = gr.Textbox(
                                     label="Tu pregunta de investigación",
                                     placeholder="Ej: Compare las metodologías de IA para historias de usuario...",
                                     scale=4,
-                                    lines=2
+                                    lines=2,
                                 )
-                                send_btn = gr.Button("Enviar", variant="primary", scale=1)
-                            
+                                send_btn = gr.Button(
+                                    "Enviar", variant="primary", scale=1
+                                )
+
                             with gr.Row():
-                                clear_btn = gr.Button("🗑️ Limpiar Chat", variant="secondary")
-                        
+                                clear_btn = gr.Button(
+                                    "🗑️ Limpiar Chat", variant="secondary"
+                                )
+
                         with gr.Column(scale=1):
                             # Panel de información del sistema - ENHANCED con Query Advisor
                             system_info_display = gr.Markdown(
                                 label="📊 Información del Sistema + Query Advisor",
                                 value="*Envía una consulta para ver cómo el sistema analiza tu pregunta con IA multicapa + sugerencias inteligentes*",
                                 elem_classes=["system-info"],
-                                visible=True
+                                visible=True,
                             )
-                    
+
                     # Ejemplos académicos organizados por tipo + nuevos ejemplos de advisor
-                    with gr.Accordion("📋 Ejemplos por Tipo de Consulta + Query Advisor", open=False):
-                        gr.Markdown("""
+                    with gr.Accordion(
+                        "📋 Ejemplos por Tipo de Consulta + Query Advisor", open=False
+                    ):
+                        gr.Markdown(
+                            """
                         **🔵 Definiciones Conceptuales (Activará template + advisor para definiciones):**
                         - "¿Qué es Natural Language Processing en requirements engineering?"
                         - "Define machine learning aplicado a historias de usuario"
@@ -594,76 +655,95 @@ class GradioRAGApp:
                         - Consultas muy cortas: "IA", "ML", "NLP"
                         - Consultas vagas: "métodos", "técnicas", "approaches"
                         - Consultas sin contexto: "compare algorithms"
-                        """)
+                        """
+                        )
 
                     # FAQ dinámicas - aprendizaje del sistema
                     faq_display = gr.Markdown(value=self.get_faq_markdown())
-                    
+
                     def respond(message, chat_history):
                         """Handler principal para las respuestas del chat con Query Advisor."""
                         if not message.strip():
                             return chat_history, "", self.get_faq_markdown(), ""
-                        
+
                         # Procesar la consulta a través del pipeline completo + Query Advisor
-                        bot_response, system_info = self.chat_response(message, chat_history)
-                        
+                        bot_response, system_info = self.chat_response(
+                            message, chat_history
+                        )
+
                         # Actualizar historial en formato compatible con Gradio
                         chat_history.append({"role": "user", "content": message})
-                        chat_history.append({"role": "assistant", "content": bot_response})
+                        chat_history.append(
+                            {"role": "assistant", "content": bot_response}
+                        )
 
                         return chat_history, "", self.get_faq_markdown(), system_info
-                    
+
                     # Event handlers para interacción del usuario
                     send_btn.click(
                         respond,
                         inputs=[msg, chatbot],
-                        outputs=[chatbot, msg, faq_display, system_info_display]
+                        outputs=[chatbot, msg, faq_display, system_info_display],
                     )
-                    
+
                     msg.submit(
                         respond,
                         inputs=[msg, chatbot],
-                        outputs=[chatbot, msg, faq_display, system_info_display]
+                        outputs=[chatbot, msg, faq_display, system_info_display],
                     )
-                    
+
                     clear_btn.click(
-                        lambda: ([], "", self.get_faq_markdown(), "*Envía una consulta para ver el análisis multicapa + Query Advisor del sistema*"),
-                        outputs=[chatbot, msg, faq_display, system_info_display]
+                        lambda: (
+                            [],
+                            "",
+                            self.get_faq_markdown(),
+                            "*Envía una consulta para ver el análisis multicapa + Query Advisor del sistema*",
+                        ),
+                        outputs=[chatbot, msg, faq_display, system_info_display],
                     )
-                
+
                 # Tab de administración del sistema - ENHANCED con analytics
                 with gr.TabItem("⚙️ Administración + Analytics"):
-                    gr.Markdown("### Gestión del Sistema RAG Inteligente + Query Advisor")
-                    
-                    with gr.Row():
-                        init_btn = gr.Button("🚀 Inicializar Sistema", variant="primary")
-                        reindex_btn = gr.Button("📚 Reindexar Documentos", variant="secondary")
-                    
-                    status_output = gr.Textbox(
-                        label="Estado del Sistema",
-                        interactive=False,
-                        lines=3
+                    gr.Markdown(
+                        "### Gestión del Sistema RAG Inteligente + Query Advisor"
                     )
-                    
+
+                    with gr.Row():
+                        init_btn = gr.Button(
+                            "🚀 Inicializar Sistema", variant="primary"
+                        )
+                        reindex_btn = gr.Button(
+                            "📚 Reindexar Documentos", variant="secondary"
+                        )
+
+                    status_output = gr.Textbox(
+                        label="Estado del Sistema", interactive=False, lines=3
+                    )
+
                     # NUEVO: Panel de Analytics y Recomendaciones
                     with gr.Row():
                         with gr.Column():
                             analytics_display = gr.Markdown(
                                 label="📊 Analytics del Sistema",
-                                value=self._format_analytics_summary()
+                                value=self._format_analytics_summary(),
                             )
-                        
+
                         with gr.Column():
                             recommendations_display = gr.Markdown(
                                 label="🔧 Recomendaciones de Mejora",
-                                value=self.get_improvement_recommendations()
+                                value=self.get_improvement_recommendations(),
                             )
-                    
-                    refresh_analytics_btn = gr.Button("🔄 Actualizar Analytics", variant="secondary")
-                    
+
+                    refresh_analytics_btn = gr.Button(
+                        "🔄 Actualizar Analytics", variant="secondary"
+                    )
+
                     # Información detallada de configuración
-                    gr.Markdown("### Configuración del Sistema RAG Inteligente + Query Advisor")
-                    gr.Markdown(f"""
+                    gr.Markdown(
+                        "### Configuración del Sistema RAG Inteligente + Query Advisor"
+                    )
+                    gr.Markdown(
+                        f"""
                     **💡 Query Advisor (NUEVO):**
                     - 🎯 **Estado**: `Habilitado y operativo`
                     - 📊 **Umbral efectividad**: `{getattr(self.rag_service.query_advisor, 'effectiveness_threshold', 0.7)}`
@@ -694,11 +774,13 @@ class GradioRAGApp:
                     - 📊 **Tamaño de chunk**: `{settings.chunk_size}`
                     - 🔗 **Overlap de chunk**: `{settings.chunk_overlap}`
                     - 📖 **Documentos por consulta**: `{settings.max_documents}`
-                    """)
-                
+                    """
+                    )
+
                 # Tab de guía académica - ENHANCED con Query Advisor
                 with gr.TabItem("📚 Guía de Investigación + Query Advisor"):
-                    gr.Markdown("""
+                    gr.Markdown(
+                        """
                     ## 🎓 Sistema RAG Inteligente + Query Advisor para Investigación Académica
                     
                     ### 🧠 Inteligencia Artificial Multicapa + Sugerencias Inteligentes
@@ -852,24 +934,22 @@ class GradioRAGApp:
                     - **🔬 Reproducir** resultados con total transparencia del proceso + analytics de mejora
                     - **💡 Mejorar continuamente** tus skills de consulta académica con feedback inteligente personalizado
                     - **📚 Aprender** de patrones exitosos para formular mejores preguntas automáticamente
-                    """)
-           
-           # Event handlers para funcionalidades administrativas + analytics
-            init_btn.click(
-                fn=self.initialize_service,
-                outputs=status_output
-            )
-            
-            reindex_btn.click(
-                fn=self.reindex_documents,
-                outputs=status_output
-            )
-            
+                    """
+                    )
+
+            # Event handlers para funcionalidades administrativas + analytics
+            init_btn.click(fn=self.initialize_service, outputs=status_output)
+
+            reindex_btn.click(fn=self.reindex_documents, outputs=status_output)
+
             refresh_analytics_btn.click(
-                fn=lambda: (self._format_analytics_summary(), self.get_improvement_recommendations()),
-                outputs=[analytics_display, recommendations_display]
+                fn=lambda: (
+                    self._format_analytics_summary(),
+                    self.get_improvement_recommendations(),
+                ),
+                outputs=[analytics_display, recommendations_display],
             )
-        
+
         return interface
 
     def launch(self, **kwargs):
@@ -877,16 +957,20 @@ class GradioRAGApp:
         Lanza la aplicación con configuración optimizada para investigación académica + Query Advisor.
         """
         interface = self.create_interface()
-        
+
         # Configuración por defecto optimizada
         launch_kwargs = {
-            'server_port': settings.server_port,
-            'share': settings.share_gradio,
-            'show_error': True,
-            'quiet': False,
-            **kwargs
+            "server_port": settings.server_port,
+            "share": settings.share_gradio,
+            "show_error": True,
+            "quiet": False,
+            **kwargs,
         }
-        
-        logger.info(f"Launching advanced RAG app with Query Advisor on port {launch_kwargs['server_port']}")
-        logger.info("Features enabled: Intent Detection + Query Expansion + Smart Model Selection + Query Advisor + Analytics")
+
+        logger.info(
+            f"Launching advanced RAG app with Query Advisor on port {launch_kwargs['server_port']}"
+        )
+        logger.info(
+            "Features enabled: Intent Detection + Query Expansion + Smart Model Selection + Query Advisor + Analytics"
+        )
         interface.launch(**launch_kwargs)

@@ -83,13 +83,13 @@ def test_query_advisor_core():
         else:
             print("   ⚠️ No tips generated")
         
-        return True
+        assert True  # Test passed if no exceptions
         
     except Exception as e:
         print(f"❌ ERROR: {e}")
         import traceback
         traceback.print_exc()
-        return False
+        assert False, f"Test failed with error: {e}"
 
 def test_low_effectiveness_scenario():
     """Test advisor with low effectiveness query"""
@@ -134,11 +134,11 @@ def test_low_effectiveness_scenario():
             for suggestion in suggestions:
                 print(f"      - {suggestion.reformulated_query}")
         
-        return True
+        assert True  # Test passed if no exceptions
         
     except Exception as e:
         print(f"❌ ERROR: {e}")
-        return False
+        assert False, f"Test failed with error: {e}"
 
 def test_integration_with_existing_system():
     """Test integration with existing RAG components"""
@@ -167,11 +167,11 @@ def test_integration_with_existing_system():
         
         print("   ✅ All required methods available")
         
-        return True
+        assert True  # Test passed if no exceptions
         
     except Exception as e:
         print(f"❌ ERROR: {e}")
-        return False
+        assert False, f"Test failed with error: {e}"
 
 def main():
     """Main test runner"""
