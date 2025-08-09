@@ -1,0 +1,99 @@
+# =============================================================================
+# CONFIGURACIÓN DEL SISTEMA RAG - Template
+# =============================================================================
+# INSTRUCCIONES:
+# 1. Copia este archivo a .env en la raíz del proyecto
+# 2. Configura tu OPENAI_API_KEY
+# 3. Ajusta otros parámetros según tus necesidades
+
+# =============================================================================
+# OpenAI Configuration (REQUERIDO)
+# =============================================================================
+# Tu API key de OpenAI - obténla en: https://platform.openai.com/api-keys
+OPENAI_API_KEY=tu_api_key_aqui
+
+# =============================================================================
+# Selección Inteligente de Modelos
+# =============================================================================
+# Modelo para consultas complejas (análisis académicos, comparaciones)
+COMPLEX_MODEL=gpt-4o
+
+# Modelo para consultas simples (búsquedas básicas, extracciones)
+SIMPLE_MODEL=gpt-4o-mini
+
+# Modelo por defecto
+DEFAULT_MODEL=gpt-4o-mini
+
+# Habilitar selección automática de modelos basada en complejidad
+ENABLE_SMART_SELECTION=true
+
+# Umbral para determinar complejidad (0.0-1.0, mayor = más exigente)
+COMPLEXITY_THRESHOLD=0.6
+
+# =============================================================================
+# Configuración de Embeddings
+# =============================================================================
+# Modelo para generar embeddings vectoriales
+EMBEDDING_MODEL=text-embedding-3-large
+
+# =============================================================================
+# Paths y Directorios
+# =============================================================================
+# Directorio donde colocar los documentos a procesar
+DOCUMENTS_PATH=./data/documents
+
+# Directorio para la base de datos vectorial
+VECTOR_DB_PATH=./data/vector_db
+
+# Archivo de base de datos para trazas y logging
+TRACE_DB_PATH=./data/traces.db
+
+# =============================================================================
+# Configuración RAG
+# =============================================================================
+# Tamaño de cada chunk de texto (caracteres)
+CHUNK_SIZE=2200
+
+# Superposición entre chunks (caracteres)
+CHUNK_OVERLAP=440
+
+# Máximo número de documentos a recuperar por consulta
+MAX_DOCUMENTS=10
+
+# =============================================================================
+# Configuración de Interfaz
+# =============================================================================
+# Puerto del servidor web
+SERVER_PORT=7860
+
+# Compartir interfaz públicamente (true/false)
+SHARE_GRADIO=false
+
+# =============================================================================
+# Logging y Debugging
+# =============================================================================
+# Nivel de logging (DEBUG, INFO, WARNING, ERROR)
+LOG_LEVEL=INFO
+
+# Configuraciones de UI avanzada
+# Mostrar información técnica del modelo en la UI (solo en DEBUG)
+SHOW_MODEL_INFO_UI=false
+
+# Habilitar modo expert con funciones avanzadas
+EXPERT_MODE=false
+
+# Mostrar errores técnicos detallados (solo para desarrollo)
+SHOW_TECHNICAL_ERRORS=false
+
+# =============================================================================
+# Métricas y SLA (opcional)
+# =============================================================================
+# Puerto para métricas de observabilidad
+METRICS_PORT=8000
+
+# Timeouts en milisegundos para diferentes operaciones
+INGEST_SLA_MS=1000
+EMBED_SLA_MS=1000
+CHUNK_SLA_MS=1000
+SEARCH_SLA_MS=1000
+SYNTHESIZE_SLA_MS=2000 

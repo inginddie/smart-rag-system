@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Enhanced RAG Service with Query Advisor Integration
+Enhanced RAG Service with HU5 Query Preprocessing & Validation Integration
 MODIFICATION of existing src/services/rag_service.py
 """
 
@@ -14,33 +14,41 @@ from src.utils.intent_detector import IntentType
 from src.utils.logger import setup_logger
 from src.utils.metrics import start_metrics_server
 from src.utils.quality_validator import academic_quality_validator
-# ======= NEW IMPORTS FOR HU4 =======
+# ======= NEW IMPORTS FOR HU4 & HU5 =======
 from src.utils.query_advisor import query_advisor
 from src.utils.usage_analytics import usage_analytics
+
+# ======= NEW IMPORTS FOR HU5 =======
+from src.utils.query_validator import query_validator, ValidationResult
+from src.utils.refinement_suggester import refinement_suggester, RefinementResult
 
 logger = setup_logger()
 
 
 class RAGService:
-    """Servicio RAG con Query Advisor y Usage Analytics integrados"""
-
+    """RAG Service con Query Preprocessing (HU5), Query Advisor y Usage Analytics integrados"""
+    
     def __init__(self):
         self.vector_store_manager = VectorStoreManager()
         self.rag_chain = RAGChain()
         self.faq_manager = FAQManager()
         self.quality_validator = academic_quality_validator
-
-        # ======= NEW COMPONENTS =======
+        
+        # HU4 Components
         self.query_advisor = query_advisor
         self.usage_analytics = usage_analytics
-
+        
+        # ======= NEW HU5 COMPONENTS =======
+        self.query_validator = query_validator
+        self.refinement_suggester = refinement_suggester
+        
         self._initialized = False
 
     def initialize(self, force_reindex: bool = False) -> bool:
         """Inicializa el servicio RAG"""
         try:
-            logger.info("Starting enhanced RAG service initialization...")
-
+            logger.info("Starting enhanced RAG service initialization with HU5 preprocessing...")
+            
             needs_indexing = force_reindex or self._needs_indexing()
 
             if needs_indexing:
@@ -55,9 +63,7 @@ class RAGService:
 
             self.rag_chain.create_chain()
             self._initialized = True
-            logger.info(
-                "Enhanced RAG service initialized with Query Advisor and Analytics"
-            )
+            logger.info("Enhanced RAG service initialized with HU5 Query Preprocessing, Query Advisor and Analytics")
             start_metrics_server()
             return True
 
@@ -109,39 +115,117 @@ class RAGService:
                 f"Could not check collection status: {e}, assuming indexing needed"
             )
             return True
-
-    def query(
-        self,
-        question: str,
-        include_sources: bool = False,
-        validate_quality: bool = True,
-        include_advisor: bool = True,
-    ) -> Dict[str, Any]:
+    
+    def query(self, question: str, include_sources: bool = False, 
+              validate_quality: bool = True, include_advisor: bool = True,
+              enable_preprocessing: bool = True) -> Dict[str, Any]:
         """
-        Procesa consulta con Query Advisor y Analytics integrados
-
-        ENHANCED METHOD - includes advisor suggestions and analytics tracking
+        Procesa consulta con HU5 Query Preprocessing + Query Advisor y Analytics
+        
+        ENHANCED METHOD - now includes HU5 preprocessing BEFORE main pipeline
+        
+        Args:
+            question: User query
+            include_sources: Include source documents in response
+            validate_quality: Validate response quality
+            include_advisor: Include Query Advisor analysis
+            enable_preprocessing: Enable HU5 query preprocessing (NEW)
         """
         if not self._initialized:
             raise RAGException("RAG service not initialized. Call initialize() first.")
 
         try:
-            # ======= CORE RAG PROCESSING =======
-            result = self.rag_chain.invoke(question)
-
+            # ======= HU5 QUERY PREPROCESSING (NEW) =======
+            preprocessing_info = None
+            final_query = question  # Default: use original query
+            
+            if enable_preprocessing and settings.enable_query_preprocessing:
+                logger.debug(f"HU5: Starting query preprocessing for: {question[:50]}...")
+                
+                try:
+                    # Step 1: Validate the query
+                    validation_result = self.query_validator.validate_query(question)
+                    
+                    # Step 2: Generate refinement suggestions if needed
+                    refinement_result = None
+                    if not validation_result.validation_passed:
+                        refinement_result = self.refinement_suggester.generate_refinements(
+                            question, validation_result
+                        )
+                    
+                    # Step 3: Prepare preprocessing info for response
+                    preprocessing_info = {
+                        'preprocessing_enabled': True,
+                        'validation_result': {
+                            'is_valid': validation_result.is_valid,
+                            'confidence_score': validation_result.confidence_score,
+                            'issues_count': len(validation_result.issues),
+                            'should_show_modal': validation_result.should_show_modal,
+                            'validation_passed': validation_result.validation_passed,
+                            'processing_time_ms': validation_result.processing_time_ms,
+                            'issues': validation_result.issues  # Detailed issues for UI
+                        },
+                        'refinement_suggestions': None,
+                        'preprocessing_time_ms': validation_result.processing_time_ms
+                    }
+                    
+                    # Add refinement suggestions if available
+                    if refinement_result and refinement_result.suggestions_available:
+                        preprocessing_info['refinement_suggestions'] = {
+                            'available': True,
+                            'suggestions_count': len(refinement_result.suggestions),
+                            'suggestions': [
+                                {
+                                    'suggested_query': s.suggested_query,
+                                    'reason': s.reason,
+                                    'confidence': s.confidence,
+                                    'expected_improvement': s.expected_improvement,
+                                    'strategy': s.strategy.value,
+                                    'priority': s.priority
+                                } for s in refinement_result.suggestions
+                            ],
+                            'quick_fixes': refinement_result.quick_fixes,
+                            'processing_time_ms': refinement_result.processing_time_ms
+                        }
+                    else:
+                        preprocessing_info['refinement_suggestions'] = {'available': False}
+                    
+                    # Step 4: Determine if we should proceed with original query or suggest alternatives
+                    # For HU5 implementation, we continue with original query but provide suggestions
+                    # In production, this could be enhanced to wait for user choice
+                    
+                    logger.info(f"HU5: Query preprocessing completed - confidence: {validation_result.confidence_score:.3f}, suggestions: {refinement_result.suggestions_available if refinement_result else False}")
+                    
+                except Exception as e:
+                    logger.error(f"HU5: Error in query preprocessing: {e}")
+                    # Graceful fallback - continue with original query
+                    preprocessing_info = {
+                        'preprocessing_enabled': True,
+                        'error': f'Preprocessing failed: {str(e)}',
+                        'fallback_used': True
+                    }
+            
+            # ======= CORE RAG PROCESSING (Existing Pipeline) =======
+            result = self.rag_chain.invoke(final_query)
+            
             # Registrar pregunta para FAQs
             self.faq_manager.log_question(question)
 
             # Preparar respuesta base
             response = {
-                "answer": result.get("answer", "No se pudo generar una respuesta."),
-                "question": question,
-                "model_info": result.get("model_info", {}),
-                "intent_info": result.get("intent_info", {}),
-                "template_info": result.get("template_info", {}),
+                'answer': result.get('answer', 'No se pudo generar una respuesta.'),
+                'question': question,
+                'final_query_used': final_query,
+                'model_info': result.get('model_info', {}),
+                'intent_info': result.get('intent_info', {}),
+                'template_info': result.get('template_info', {})
             }
-
-            # ======= QUERY ADVISOR INTEGRATION =======
+            
+            # ======= HU5 PREPROCESSING INFO (NEW) =======
+            if preprocessing_info:
+                response['preprocessing_info'] = preprocessing_info
+            
+            # ======= QUERY ADVISOR INTEGRATION (Existing HU4) =======
             if include_advisor:
                 try:
                     # Extract intent result for advisor
@@ -233,17 +317,17 @@ class RAGService:
                         "error": "Advisor analysis failed",
                         "suggestion_shown": False,
                     }
-
-            # ======= QUALITY VALIDATION =======
+            
+            # ======= QUALITY VALIDATION (Existing) =======
             if validate_quality and self._should_validate_quality(result):
                 try:
                     quality_score = self._validate_response_quality(result, question)
                     response["quality_info"] = quality_score
                 except Exception as e:
                     logger.warning(f"Quality validation failed: {e}")
-                    response["quality_info"] = {"error": "Quality validation failed"}
-
-            # ======= SOURCES =======
+                    response['quality_info'] = {"error": "Quality validation failed"}
+            
+            # ======= SOURCES (Existing) =======
             if include_sources:
                 sources = []
                 for doc in result.get("context", []):
@@ -263,13 +347,110 @@ class RAGService:
         except Exception as e:
             logger.error(f"Error processing query: {e}")
             raise RAGException(f"Failed to process query: {e}")
-
-    def track_suggestion_adoption(
-        self, original_query: str, adopted: bool = True
-    ) -> None:
+    
+    def validate_query_only(self, question: str) -> Dict[str, Any]:
         """
-        NEW METHOD - Track when user adopts/rejects a suggestion
+        NEW METHOD - Only validate query without processing (for UI modal use)
+        
+        Args:
+            question: User query to validate
+            
+        Returns:
+            Dict with validation result and suggestions
         """
+        try:
+            if not settings.enable_query_preprocessing:
+                return {
+                    'preprocessing_enabled': False,
+                    'message': 'Query preprocessing is disabled'
+                }
+            
+            # Validate the query
+            validation_result = self.query_validator.validate_query(question)
+            
+            # Generate suggestions if validation failed
+            refinement_result = None
+            if not validation_result.validation_passed:
+                refinement_result = self.refinement_suggester.generate_refinements(
+                    question, validation_result
+                )
+            
+            return {
+                'preprocessing_enabled': True,
+                'validation': {
+                    'is_valid': validation_result.is_valid,
+                    'confidence_score': validation_result.confidence_score,
+                    'validation_passed': validation_result.validation_passed,
+                    'should_show_modal': validation_result.should_show_modal,
+                    'issues': validation_result.issues,
+                    'processing_time_ms': validation_result.processing_time_ms
+                },
+                'suggestions': {
+                    'available': refinement_result.suggestions_available if refinement_result else False,
+                    'suggestions': [
+                        {
+                            'suggested_query': s.suggested_query,
+                            'reason': s.reason,
+                            'confidence': s.confidence,
+                            'expected_improvement': s.expected_improvement,
+                            'strategy': s.strategy.value,
+                            'priority': s.priority
+                        } for s in (refinement_result.suggestions if refinement_result else [])
+                    ],
+                    'quick_fixes': refinement_result.quick_fixes if refinement_result else [],
+                    'processing_time_ms': refinement_result.processing_time_ms if refinement_result else 0
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"Error in query validation: {e}")
+            return {
+                'preprocessing_enabled': True,
+                'error': str(e),
+                'validation': {'is_valid': True, 'confidence_score': 0.5}  # Fail-open
+            }
+    
+    def apply_refinement_suggestion(self, original_query: str, suggested_query: str, 
+                                   include_sources: bool = False, validate_quality: bool = True,
+                                   include_advisor: bool = True) -> Dict[str, Any]:
+        """
+        NEW METHOD - Apply a refinement suggestion and process the improved query
+        
+        Args:
+            original_query: Original user query
+            suggested_query: Improved query from refinement suggester
+            Other params: Same as main query method
+        """
+        try:
+            # Track that a suggestion was applied
+            self.usage_analytics.track_suggestion_adoption(original_query, adopted=True)
+            
+            # Process the refined query with preprocessing disabled (already validated)
+            result = self.query(
+                question=suggested_query,
+                include_sources=include_sources,
+                validate_quality=validate_quality,
+                include_advisor=include_advisor,
+                enable_preprocessing=False  # Skip preprocessing for refined queries
+            )
+            
+            # Add refinement metadata
+            result['refinement_applied'] = {
+                'original_query': original_query,
+                'suggested_query': suggested_query,
+                'suggestion_adopted': True
+            }
+            
+            logger.info(f"HU5: Applied refinement suggestion - original: '{original_query[:50]}...', refined: '{suggested_query[:50]}...'")
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Error applying refinement suggestion: {e}")
+            raise RAGException(f"Failed to apply refinement: {e}")
+    
+    def track_suggestion_adoption(self, original_query: str, adopted: bool = True) -> None:
+        """Track when user adopts/rejects a suggestion (existing HU4 method)"""
         try:
             self.usage_analytics.track_suggestion_adoption(original_query, adopted)
             logger.debug(
@@ -277,11 +458,23 @@ class RAGService:
             )
         except Exception as e:
             logger.error(f"Error tracking suggestion adoption: {e}")
-
+    
+    def track_refinement_suggestion_adoption(self, original_query: str, suggested_query: str, adopted: bool = True) -> None:
+        """
+        NEW METHOD - Track HU5 refinement suggestion adoption
+        """
+        try:
+            # Track in analytics with additional refinement metadata
+            self.usage_analytics.track_suggestion_adoption(original_query, adopted)
+            
+            # Could be extended to track specific refinement strategies if needed
+            logger.debug(f"HU5: Refinement suggestion {'adopted' if adopted else 'rejected'} - original: '{original_query[:30]}...', suggested: '{suggested_query[:30]}...'")
+            
+        except Exception as e:
+            logger.error(f"Error tracking refinement suggestion adoption: {e}")
+    
     def get_analytics_summary(self) -> Dict[str, Any]:
-        """
-        NEW METHOD - Get analytics summary for admin dashboard
-        """
+        """Get analytics summary for admin dashboard (existing HU4 method)"""
         try:
             return self.usage_analytics.get_analytics_summary()
         except Exception as e:
@@ -289,25 +482,40 @@ class RAGService:
             return {"status": "error", "message": str(e)}
 
     def get_improvement_recommendations(self) -> List[Dict]:
-        """
-        NEW METHOD - Get improvement recommendations based on analytics
-        """
+        """Get improvement recommendations based on analytics (existing HU4 method)"""
         try:
             return self.usage_analytics.get_improvement_recommendations()
         except Exception as e:
             logger.error(f"Error getting improvement recommendations: {e}")
             return []
-
+    
+    def get_preprocessing_stats(self) -> Dict[str, Any]:
+        """
+        NEW METHOD - Get HU5 preprocessing performance statistics
+        """
+        try:
+            validation_stats = self.query_validator.get_validation_stats()
+            suggestion_stats = self.refinement_suggester.get_suggestion_stats()
+            
+            return {
+                'preprocessing_enabled': settings.enable_query_preprocessing,
+                'validation_stats': validation_stats,
+                'suggestion_stats': suggestion_stats,
+                'configuration': settings.get_preprocessing_config()
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting preprocessing stats: {e}")
+            return {"status": "error", "message": str(e)}
+    
     def _should_validate_quality(self, result: Dict[str, Any]) -> bool:
-        """Determina si se debe validar calidad de la respuesta"""
+        """Determina si se debe validar calidad de la respuesta (existing method)"""
         # Validar solo si se usó template especializado
-        template_info = result.get("template_info", {})
-        return template_info.get("template_used", False)
-
-    def _validate_response_quality(
-        self, result: Dict[str, Any], question: str
-    ) -> Dict[str, Any]:
-        """Valida calidad de la respuesta usando template metadata"""
+        template_info = result.get('template_info', {})
+        return template_info.get('template_used', False)
+    
+    def _validate_response_quality(self, result: Dict[str, Any], question: str) -> Dict[str, Any]:
+        """Valida calidad de la respuesta usando template metadata (existing method)"""
         try:
             # Obtener información necesaria
             answer = result.get("answer", "")
@@ -358,7 +566,7 @@ class RAGService:
             return {"validation_successful": False, "error": str(e)}
 
     def get_simple_answer(self, question: str) -> str:
-        """Obtiene respuesta simple con información del modelo"""
+        """Obtiene respuesta simple con información del modelo (existing method)"""
         result = self.query(question)
 
         answer = result["answer"]
@@ -374,11 +582,11 @@ class RAGService:
         return answer
 
     def get_frequent_questions(self, top_n: int = 5) -> List[str]:
-        """Devuelve las preguntas más frecuentes registradas"""
+        """Devuelve las preguntas más frecuentes registradas (existing method)"""
         return self.faq_manager.get_top_questions(top_n)
 
     def reindex_documents(self) -> int:
-        """Reindexar documentos"""
+        """Reindexar documentos (existing method)"""
         try:
             logger.info("Starting document reindexing...")
             logger.warning("Reindexing will reset the vector database")
@@ -404,11 +612,12 @@ class RAGService:
             raise RAGException(f"Failed to reindex documents: {e}")
 
     def get_status(self) -> Dict[str, Any]:
-        """Obtiene el estado del servicio con información del advisor"""
+        """Obtiene el estado del servicio con información HU5 + advisor (enhanced method)"""
         try:
             collection_info = self.vector_store_manager.get_collection_info()
             analytics_summary = self.get_analytics_summary()
-
+            preprocessing_stats = self.get_preprocessing_stats()
+            
             return {
                 "initialized": self._initialized,
                 "collection_status": collection_info.get("status", "unknown"),
@@ -421,22 +630,27 @@ class RAGService:
                     "enable_smart_selection",
                     False,
                 ),
-                "template_support": True,
-                "quality_validation": True,
-                # ======= NEW STATUS INFO =======
-                "query_advisor_enabled": True,
-                "usage_analytics_enabled": True,
-                "total_queries_processed": analytics_summary.get("total_queries", 0),
-                "avg_effectiveness": analytics_summary.get("avg_effectiveness", 0),
-                "suggestion_adoption_rate": analytics_summary.get(
-                    "suggestion_adoption_rate", 0
-                ),
+                'template_support': True,
+                'quality_validation': True,
+                
+                # HU4 Status Info
+                'query_advisor_enabled': True,
+                'usage_analytics_enabled': True,
+                'total_queries_processed': analytics_summary.get('total_queries', 0),
+                'avg_effectiveness': analytics_summary.get('avg_effectiveness', 0),
+                'suggestion_adoption_rate': analytics_summary.get('suggestion_adoption_rate', 0),
+                
+                # ======= NEW HU5 STATUS INFO =======
+                'query_preprocessing_enabled': settings.enable_query_preprocessing,
+                'validation_before_processing': settings.validation_before_processing,
+                'preprocessing_stats': preprocessing_stats,
+                'preprocessing_sla_compliance': True  # Could be calculated from stats
             }
         except Exception as e:
             return {"initialized": self._initialized, "error": str(e)}
 
     def get_detailed_analysis(self, question: str) -> Dict[str, Any]:
-        """Obtiene análisis académico completo con información del advisor"""
+        """Obtiene análisis académico completo con información del advisor (existing method)"""
         if not self._initialized:
             raise RAGException("RAG service not initialized. Call initialize() first.")
 

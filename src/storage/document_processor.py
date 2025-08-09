@@ -1,15 +1,13 @@
 # -*- coding: utf-8 -*-
 import os
-from pathlib import Path
 from typing import List, Optional
+from pathlib import Path
 
 try:
     import pandas as pd
-
     PANDAS_AVAILABLE = True
 except ImportError:  # pragma: no cover - optional dependency
     pd = None  # type: ignore
-    PANDAS_AVAILABLE = False
 
 try:
     import psycopg2
@@ -17,10 +15,13 @@ except ImportError:  # pragma: no cover - optional dependency
     psycopg2 = None  # type: ignore
 
 try:
-    from langchain.schema import Document
+    from langchain_community.document_loaders import (
+        TextLoader,
+        PyPDFLoader,
+        Docx2txtLoader,
+    )
     from langchain.text_splitter import RecursiveCharacterTextSplitter
-    from langchain_community.document_loaders import (Docx2txtLoader,
-                                                      PyPDFLoader, TextLoader)
+    from langchain.schema import Document
 except ImportError:  # pragma: no cover - optional dependency
     TextLoader = PyPDFLoader = Docx2txtLoader = None  # type: ignore
     RecursiveCharacterTextSplitter = None  # type: ignore
@@ -39,7 +40,6 @@ except ImportError:  # pragma: no cover - optional dependency
             with open(self.path, "r", encoding="utf-8") as f:
                 content = f.read()
             return [Document(page_content=content, metadata={})]
-
 
 # ======= DEFINICIÓN CONDICIONAL CORRECTA DE ExcelLoader =======
 class ExcelLoader:
@@ -134,21 +134,16 @@ class ExcelLoader:
 import time
 
 from config.settings import settings
-from src.utils.exceptions import DocumentProcessingException
 from src.utils.logger import setup_logger
-from src.utils.metrics import record_latency
-from src.utils.tracing import get_current_tracer
+from src.utils.exceptions import DocumentProcessingException
 
 logger = setup_logger()
 
-
 class DocumentProcessor:
-    """Procesador de documentos con múltiples formatos y manejo robusto de dependencias"""
-
+    """Procesador de documentos con múltiples formatos"""
+    
     def __init__(self):
-        # Configurar text splitter con fallback si LangChain no está disponible
         if RecursiveCharacterTextSplitter is None:
-            # Implementación simple de fallback que divide por párrafos
             class _SimpleSplitter:
                 def split_documents(self, docs):
                     chunks = []
@@ -167,7 +162,6 @@ class DocumentProcessor:
                     return chunks
 
             self.text_splitter = _SimpleSplitter()
-            logger.info("Using simple text splitter (LangChain not available)")
         else:
             self.text_splitter = RecursiveCharacterTextSplitter(
                 chunk_size=settings.chunk_size,
@@ -175,12 +169,14 @@ class DocumentProcessor:
                 length_function=len,
                 separators=["\n\n", "\n", ". ", " ", ""],
             )
-            logger.info("Using LangChain RecursiveCharacterTextSplitter")
-
-        # ======= MAPEO DE LOADERS CON VERIFICACIÓN INTELIGENTE =======
-        # Empezar con loaders básicos que siempre están disponibles
+        
+        # Mapeo de extensiones a loaders
         self.loader_mapping = {
-            ".txt": TextLoader,
+            '.txt': TextLoader,
+            '.pdf': PyPDFLoader,
+            '.docx': Docx2txtLoader,
+            '.xls': ExcelLoader,
+            '.xlsx': ExcelLoader,
         }
 
         # Agregar loaders opcionales según disponibilidad
@@ -223,26 +219,19 @@ class DocumentProcessor:
         que un archivo problemático nunca cause falla del sistema completo.
         """
         try:
-            file_size_mb = file_path.stat().st_size / 1024 / 1024
-            logger.info(f"Loading file: {file_path.name} ({file_size_mb:.1f} MB)")
+            logger.info(f"Loading file: {file_path.name} ({file_path.stat().st_size / 1024 / 1024:.1f} MB)")
 
-            # Advertencia para archivos muy grandes
-            if file_size_mb > 50:
-                logger.warning(
-                    f"Large file detected: {file_path.name} ({file_size_mb:.1f} MB). "
-                    f"Processing may take longer than usual."
-                )
+            # Para PDFs grandes, usar configuración especial
+            if file_path.suffix.lower() == '.pdf' and file_path.stat().st_size > 10 * 1024 * 1024:  # > 10MB
+                logger.warning(f"Large PDF detected: {file_path.name}. Processing with special handling...")
 
-            # Verificar que el loader está disponible
             if loader_class is None:
                 logger.error(f"No loader available for {file_path.suffix}")
                 return []
 
-            # Intentar cargar el archivo
             loader = loader_class(str(file_path))
             docs = loader.load()
-
-            # Verificar que se extrajo contenido
+            
             if not docs:
                 logger.warning(f"No content extracted from {file_path}")
                 return []
@@ -272,7 +261,7 @@ class DocumentProcessor:
             # Para archivos Excel, el ExcelLoader ya maneja errores internamente
             # Para otros tipos, retornamos lista vacía para continuar procesamiento
             return []
-
+    
     def load_documents(self, path: Optional[str] = None):
         """
         Carga documentos desde un directorio con procesamiento robusto.
@@ -281,11 +270,11 @@ class DocumentProcessor:
         con archivos individuales no impiden el procesamiento del resto.
         """
         documents_path = Path(path or settings.documents_path)
-
+        
         if not documents_path.exists():
             logger.warning(f"Documents path does not exist: {documents_path}")
             return []
-
+        
         try:
             all_documents = []
             skipped_files = []
@@ -293,21 +282,19 @@ class DocumentProcessor:
             # Buscar todos los archivos soportados
             supported_files = []
             for file_path in documents_path.rglob("*"):
-                if (
-                    file_path.is_file()
-                    and file_path.suffix.lower() in self.loader_mapping
-                    and not file_path.name.startswith(".")
-                    and file_path.name != ".gitkeep"
-                ):
+                if (file_path.is_file() and 
+                    file_path.suffix.lower() in self.loader_mapping and
+                    not file_path.name.startswith('.') and
+                    file_path.name != '.gitkeep'):
                     supported_files.append(file_path)
-
+            
             if not supported_files:
-                logger.warning(f"No supported files found in {documents_path}")
+                logger.warning("No supported files found")
                 return []
-
-            logger.info(f"Found {len(supported_files)} supported files to process")
-
-            # Procesar cada archivo individualmente
+            
+            logger.info(f"Found {len(supported_files)} supported files")
+            
+            # Procesar archivos uno por uno
             for file_path in supported_files:
                 try:
                     logger.debug(f"Processing: {file_path.name}")
@@ -353,51 +340,48 @@ class DocumentProcessor:
                     f"  - Skipped files: {len(skipped_files)} ({', '.join(skipped_files[:3])}{'...' if len(skipped_files) > 3 else ''})"
                 )
 
+            
             return all_documents
-
+            
         except Exception as e:
-            logger.error(f"Error in document loading process: {e}")
+            logger.error(f"Error loading documents: {e}")
             raise DocumentProcessingException(f"Failed to load documents: {e}")
-
+    
     def split_documents(self, documents):
         """Divide documentos en chunks con monitoreo de performance"""
-        tracer = get_current_tracer()
-        span = tracer.start_span("chunk") if tracer else None
-        start = time.perf_counter()
-
         try:
             if not documents:
                 logger.warning("No documents to split")
                 return []
-
+            
             logger.info(f"Splitting {len(documents)} documents into chunks...")
-
-            # Procesar en lotes para manejar memoria eficientemente
+            
+            # Procesar documentos en lotes para evitar problemas de memoria
             all_chunks = []
             batch_size = 10
-            total_batches = (len(documents) + batch_size - 1) // batch_size
-
+            
             for i in range(0, len(documents), batch_size):
                 batch_num = (i // batch_size) + 1
                 batch = documents[i : i + batch_size]
 
+                
                 try:
-                    logger.debug(f"Processing batch {batch_num}/{total_batches}")
                     batch_chunks = self.text_splitter.split_documents(batch)
                     all_chunks.extend(batch_chunks)
                     logger.debug(
                         f"Batch {batch_num} produced {len(batch_chunks)} chunks"
                     )
 
+                    
                 except Exception as e:
-                    logger.error(f"Error processing batch {batch_num}: {e}")
+                    logger.error(f"Error processing batch {i//batch_size + 1}: {e}")
                     continue
-
+            
             logger.info(f"Total chunks created: {len(all_chunks)}")
-
-            # Filtrar chunks vacíos
+            
+            # Verificar que los chunks no están vacíos
             valid_chunks = [chunk for chunk in all_chunks if chunk.page_content.strip()]
-
+            
             if len(valid_chunks) != len(all_chunks):
                 removed_count = len(all_chunks) - len(valid_chunks)
                 logger.info(f"Removed {removed_count} empty chunks")
@@ -405,29 +389,29 @@ class DocumentProcessor:
             logger.info(
                 f"Document splitting completed: {len(valid_chunks)} valid chunks ready"
             )
+            
             return valid_chunks
-
+            
         except Exception as e:
             logger.error(f"Error splitting documents: {e}")
             raise DocumentProcessingException(f"Failed to split documents: {e}")
-        finally:
-            duration = (time.perf_counter() - start) * 1000
-            record_latency("chunk", duration, settings.chunk_sla_ms)
-            if tracer and span:
-                tracer.end_span(span, "success")
 
     def load_from_postgres(self, conn_str: str, query: str) -> List[Document]:
-        """Carga datos desde PostgreSQL con manejo de dependencias"""
-        if psycopg2 is None or not PANDAS_AVAILABLE:
+        """Carga datos desde una base de datos PostgreSQL"""
+        if psycopg2 is None or pd is None:
             raise DocumentProcessingException(
-                "PostgreSQL support requires psycopg2 and pandas. "
-                "Install with: pip install psycopg2-binary pandas"
+                "PostgreSQL support requires psycopg2 and pandas"
             )
         try:
             logger.info("Loading data from PostgreSQL...")
             with psycopg2.connect(conn_str) as conn:
                 df = pd.read_sql_query(query, conn)
-            text = df.astype(str).fillna("").agg(" ".join, axis=1).str.cat(sep="\n")
+            text = (
+                df.astype(str)
+                .fillna("")
+                .agg(" ".join, axis=1)
+                .str.cat(sep="\n")
+            )
             return [Document(page_content=text, metadata={"source": "postgres"})]
         except Exception as e:
             logger.error(f"Error loading data from PostgreSQL: {e}")
@@ -435,56 +419,47 @@ class DocumentProcessor:
                 f"Failed to load data from PostgreSQL: {e}"
             )
 
+    
     def process_documents(self, path: Optional[str] = None):
-        """Pipeline completo de procesamiento con logging detallado"""
+        """Pipeline completo de procesamiento"""
         try:
             logger.info("Starting document processing pipeline...")
-            pipeline_start = time.perf_counter()
-
-            # Fase 1: Cargar documentos
-            logger.info("Phase 1: Loading documents from filesystem...")
+            
+            # Cargar documentos
             documents = self.load_documents(path)
             if not documents:
                 logger.warning(
                     "No documents loaded - pipeline completed with empty result"
                 )
                 return []
-
-            # Fase 2: Dividir en chunks
-            logger.info("Phase 2: Splitting documents into chunks...")
+            
+            # Dividir en chunks
             chunks = self.split_documents(documents)
             if not chunks:
                 logger.warning("No chunks created from documents")
                 return []
-
-            # Resumen final
-            pipeline_duration = (time.perf_counter() - pipeline_start) * 1000
-            logger.info(f"Document processing pipeline completed successfully:")
-            logger.info(f"  - Processing time: {pipeline_duration:.1f}ms")
-            logger.info(f"  - Input documents: {len(documents)}")
-            logger.info(f"  - Output chunks: {len(chunks)}")
-            logger.info(
-                f"  - Average chunks per document: {len(chunks)/len(documents):.1f}"
-            )
-
+            
+            logger.info(f"Document processing completed: {len(chunks)} chunks ready for indexing")
+            
             return chunks
-
+            
         except Exception as e:
             logger.error(f"Error in document processing pipeline: {e}")
             raise DocumentProcessingException(f"Document processing failed: {e}")
-
+    
     def get_file_info(self, path: Optional[str] = None) -> dict:
-        """Obtiene información detallada sobre archivos en el directorio"""
+        """Obtiene información sobre los archivos en el directorio"""
         documents_path = Path(path or settings.documents_path)
-
+        
         if not documents_path.exists():
-            return {"error": "Directory does not exist", "path": str(documents_path)}
-
+            return {"error": "Directory does not exist"}
+        
         files_info = []
         total_size = 0
+        
         supported_count = 0
         unsupported_count = 0
-
+        
         for file_path in documents_path.rglob("*"):
             if (
                 file_path.is_file()

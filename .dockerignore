@@ -1,0 +1,60 @@
+# Git y control de versiones
+.git
+.gitignore
+.gitattributes
+
+# Documentación
+README.md
+CHANGELOG.md
+CONTRIBUTING.md
+SECURITY.md
+LICENSE
+
+# Archivos de configuración local
+.env
+.env.local
+.env.*.local
+config.template
+
+# Dependencias y entornos virtuales
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Datos locales (se montan como volúmenes)
+data/
+logs/
+*.log
+
+# IDEs y editores
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+*.tmp
+*.temp
+
+# Archivos de build y distribución
+build/
+dist/
+*.egg-info/
+
+# Coverage y testing
+.coverage
+.nyc_output
+htmlcov/
+
+# Otros archivos temporales
+*.pid
+*.seed
+*.pid.lock
+.npm
+.node_repl_history 

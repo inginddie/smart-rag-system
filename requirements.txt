@@ -38,3 +38,85 @@ psycopg2-binary>=2.9.0
 
 # OpenAI (backup direct client)
 openai>=1.0.0
+
+# ================================
+# NUEVAS DEPENDENCIAS PARA AGENTIC RAG
+# ================================
+
+# Orquestación de Agentes
+langgraph>=0.2.0
+crewai>=0.70.0
+
+# Memoria Distribuida 
+redis>=5.0.0
+redis-py>=5.0.0
+
+# Herramientas y Utilidades para Agentes
+python-dotenv>=1.0.0  # ya existe, pero asegurar versión
+httpx>=0.24.0  # para APIs externas
+aiohttp>=3.8.0  # requests asíncronos
+
+# Testing Avanzado para Agentes
+pytest-asyncio>=0.21.0
+pytest-mock>=3.11.0
+
+# Procesamiento de Datos Adicional
+pydantic>=2.8.0  # actualizar para mejor soporte de agentes
+typing-extensions>=4.7.0
+
+# APIs Académicas (opcional, para fases posteriores)
+arxiv>=1.4.0  # ArXiv API
+scholarly>=1.7.0  # Google Scholar (no oficial)
+
+# Core LangChain packages
+langchain>=0.2.0
+langchain-openai>=0.1.0
+langchain-chroma>=0.1.2
+langchain-community>=0.2.0
+
+# Orquestación de Agentes
+langgraph>=0.2.0
+crewai>=0.70.0
+
+# Memoria Distribuida
+redis>=5.0.0
+
+# UI Framework
+gradio>=4.20.0
+
+# Configuration and Environment
+python-dotenv>=1.0.0
+pydantic>=2.8.0  # Actualizada para mejor soporte de agentes
+
+# Logging
+loguru>=0.7.2
+
+# Document Processing
+pypdf>=4.0.0
+python-docx>=1.1.0
+docx2txt>=0.8
+
+# Vector Database
+chromadb>=0.4.0
+
+# HTTP requests and APIs
+requests>=2.31.0
+httpx>=0.24.0  # Para APIs async
+aiohttp>=3.8.0
+
+# Development and Testing
+pytest>=7.4.0
+pytest-asyncio>=0.21.0  # Para testing de agentes async
+pytest-mock>=3.11.0
+black>=23.12.0
+isort>=5.13.0
+
+# Additional utilities
+numpy>=1.24.0
+pandas>=2.0.0
+openpyxl>=3.1.0
+psycopg2-binary>=2.9.0
+typing-extensions>=4.7.0
+
+# OpenAI (backup direct client)
+openai>=1.0.0

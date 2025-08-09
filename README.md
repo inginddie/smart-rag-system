@@ -37,10 +37,13 @@ source venv/bin/activate  # Linux/Mac
 pip install -r requirements.txt
 ```
 
-### 4. Configurar API Key
-Edita el archivo `.env` y agrega tu API key de OpenAI:
-```env
-OPENAI_API_KEY=tu_api_key_aqui
+### 4. Configurar variables de entorno
+```bash
+# Copia el template de configuración
+cp config.template .env
+
+# Edita .env y configura tu API key de OpenAI
+# OPENAI_API_KEY=tu_api_key_aqui
 ```
 
 ### 5. Lanzar la aplicación
