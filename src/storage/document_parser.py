@@ -83,7 +83,9 @@ def parse_image(path: str, lang: str) -> List[Document]:
             page_content=text,
             metadata={
                 "source": path,
-                "type": "image",
+                "doc_type": "image",
+                "page_number": 1,
+                "section_title": None,
                 "ocr": True,
                 "ocr_lang": lang,
             },
@@ -106,8 +108,9 @@ def parse_pdf(path: str, lang: str) -> List[Document]:
                         page_content=text,
                         metadata={
                             "source": path,
-                            "page": idx,
-                            "type": "pdf",
+                            "page_number": idx,
+                            "section_title": None,
+                            "doc_type": "pdf",
                             "ocr": False,
                         },
                     )
@@ -130,8 +133,9 @@ def parse_pdf(path: str, lang: str) -> List[Document]:
             image.save(img_path, "PNG")
             doc = parse_image(img_path, lang)[0]
             doc.metadata["source"] = path
-            doc.metadata["page"] = idx
-            doc.metadata["type"] = "pdf"
+            doc.metadata["page_number"] = idx
+            doc.metadata["section_title"] = None
+            doc.metadata["doc_type"] = "pdf"
             documents.append(doc)
 
     return documents

@@ -35,6 +35,8 @@ class TestVectorStore:
         assert len(documents) == 1
         assert "prueba" in documents[0].page_content
         assert documents[0].metadata["source_file"] == str(test_file)
+        assert documents[0].metadata["doc_type"] == "text"
+        assert documents[0].metadata["page_number"] == 1
 
     def test_document_processor_with_excel_file(self, temp_dir):
         """Test procesamiento de archivo Excel"""
