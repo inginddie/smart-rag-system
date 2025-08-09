@@ -1,5 +1,6 @@
 # Sistema RAG Avanzado
-![image](https://github.com/user-attachments/assets/18a05e72-63bc-4ba0-8940-d4012af75a8e)
+<img width="1262" height="588" alt="image" src="https://github.com/user-attachments/assets/fda14722-44a3-43c1-ad50-3eeacf34300c" />
+
 
 Un sistema completo de Retrieval-Augmented Generation (RAG) construido con Python, LangChain y Gradio.
 
