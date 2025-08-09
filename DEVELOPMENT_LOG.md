@@ -302,7 +302,7 @@
 ### **Archivos Creados/Modificados**
 - ✅ `tests/test_e2e.py` - **NUEVO** - Suite completa de tests E2E (835+ líneas)
 - ✅ `tests/test_document_ingestion.py` - **NUEVO** - Tests comprehensivos de ingestión (1100+ líneas)
-- ✅ `src/storage/document_perser.py` - **NUEVO** - Módulo de parsing estructurado
+- ✅ `src/storage/document_parser.py` - **NUEVO** - Parser con soporte OCR y metadatos
 - ✅ `tests/test_document_processor_ocr.py` - Tests de OCR processing
 - ✅ Actualizaciones de configuración y dependencias
 
@@ -341,7 +341,7 @@
 - **VectorStore Initialization**: Solucionado parámetros de constructor incompatibles
 - **Document Processing**: Fixed parsing de DOCX con archivos de prueba válidos  
 - **Mock Embeddings**: Estrategia de mocking refinada para evitar llamadas reales a OpenAI
-- **Import Path Issues**: Correcciones de rutas de importación `document_perser` vs `document_processor`
+- **Import Path Issues**: Correcciones de rutas de importación `document_parser` vs `document_processor`
 - **Exception Handling**: Alineación de excepciones entre tests y código de producción
 
 ### **Contribución a Quality Assurance**
@@ -350,6 +350,12 @@
 - **Regression Prevention**: Suite robusta previene regresiones en funcionalidad core
 - **Documentation Testing**: Tests sirven como documentación viva del comportamiento esperado
 - **CI/CD Ready**: Suite preparada para integración continua
+
+### 🔄 **Actualización HU 6.2: Soporte OCR y Metadatos**
+- **Parser OCR**: `src/storage/document_parser.py` con reconocimiento óptico y preservación de metadatos
+- **Configuración OCR**: Variables y defaults en `.env.example`, `config.template` y `config/settings.py`
+- **Dependencias OCR**: Inclusión de `pytesseract`, `pdf2image`, `opencv-python`, `Pillow` y nota sobre Tesseract en `requirements.txt` y `README.md`
+- **Pruebas Dedicadas**: `tests/test_document_processor_ocr.py` valida procesamiento OCR y propagación de metadatos
 
 ---
 
