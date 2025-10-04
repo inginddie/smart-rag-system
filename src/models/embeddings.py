@@ -1,62 +1,78 @@
 # -*- coding: utf-8 -*-
-from typing import Optional
-try:
-    from langchain_openai import OpenAIEmbeddings
-except ImportError:  # pragma: no cover - optional dependency
-    OpenAIEmbeddings = None  # type: ignore
+"""
+Embeddings con soporte para modelos locales
+"""
+from typing import List
 from config.settings import settings
 from src.utils.logger import setup_logger
-from src.utils.exceptions import EmbeddingException
-from src.utils.tracing import get_current_tracer
-from src.utils.metrics import record_latency
-import time
 
 logger = setup_logger()
 
-class EmbeddingManager:
-    """Maneja los modelos de embedding"""
+def get_embeddings():
+    """Obtiene el modelo de embeddings configurado con fallback a local"""
     
-    def __init__(self, model_name: Optional[str] = None):
-        self.model_name = model_name or settings.embedding_model
-        self._embeddings = None
+    # Try OpenAI first if API key is valid
+    if settings.openai_api_key and len(settings.openai_api_key) > 20:
+        try:
+            from langchain_openai import OpenAIEmbeddings
+            embeddings = OpenAIEmbeddings(
+                model=settings.embedding_model,
+                openai_api_key=settings.openai_api_key
+            )
+            logger.info(f"Initialized OpenAI embeddings with model: {settings.embedding_model}")
+            return embeddings
+        except Exception as e:
+            logger.warning(f"Failed to initialize OpenAI embeddings: {e}")
+            logger.info("Falling back to local embeddings...")
+    
+    # Fallback to local embeddings
+    try:
+        from langchain_community.embeddings import HuggingFaceEmbeddings
         
+        model_name = "sentence-transformers/all-MiniLM-L6-v2"
+        logger.info(f"Initializing local embeddings with model: {model_name}")
+        
+        embeddings = HuggingFaceEmbeddings(
+            model_name=model_name,
+            model_kwargs={'device': 'cpu'},
+            encode_kwargs={'normalize_embeddings': True}
+        )
+        
+        logger.info("✅ Local embeddings initialized successfully")
+        return embeddings
+        
+    except Exception as e:
+        logger.error(f"Failed to initialize local embeddings: {e}")
+        raise RuntimeError(f"Could not initialize any embedding model: {e}")
+
+# Singleton instance
+_embeddings_instance = None
+
+def embeddings():
+    """Get or create embeddings instance"""
+    global _embeddings_instance
+    if _embeddings_instance is None:
+        _embeddings_instance = get_embeddings()
+    return _embeddings_instance
+
+# Compatibility class for backward compatibility
+class EmbeddingManager:
+    """Manager class for embeddings (backward compatibility)"""
+    
+    def __init__(self):
+        self._embeddings = None
+    
     @property
     def embeddings(self):
-        """Lazy loading de embeddings"""
-        if OpenAIEmbeddings is None:
-            raise EmbeddingException(
-                "OpenAIEmbeddings dependency is required but not installed"
-            )
-
+        """Get embeddings instance"""
         if self._embeddings is None:
-            try:
-                self._embeddings = OpenAIEmbeddings(
-                    model=self.model_name,
-                    openai_api_key=settings.openai_api_key,
-                )
-                logger.info(
-                    f"Initialized embeddings with model: {self.model_name}"
-                )
-            except Exception as e:
-                logger.error(f"Error initializing embeddings: {e}")
-                raise EmbeddingException(
-                    f"Failed to initialize embeddings: {e}"
-                )
-        
+            self._embeddings = get_embeddings()
         return self._embeddings
     
-    def embed_query(self, text: str) -> list[float]:
-        """Genera embedding para una consulta"""
-        tracer = get_current_tracer()
-        span = tracer.start_span("embed") if tracer else None
-        start = time.perf_counter()
-        try:
-            return self.embeddings.embed_query(text)
-        except Exception as e:
-            logger.error(f"Error embedding query: {e}")
-            raise EmbeddingException(f"Failed to embed query: {e}")
-        finally:
-            duration = (time.perf_counter() - start) * 1000
-            record_latency("embed", duration, settings.embed_sla_ms)
-            if tracer and span:
-                tracer.end_span(span, "success")
+    def embed_query(self, text: str) -> List[float]:
+        """Embed a single query"""
+        return self.embeddings.embed_query(text)
+    
+    def embed_documents(self, texts: List[str]) -> List[List[float]]:
+        """Embed multiple documents"""
+        return self.embeddings.embed_documents(texts)

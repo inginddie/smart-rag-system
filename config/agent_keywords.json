@@ -1,0 +1,55 @@
+{
+  "agents": {
+    "DocumentSearchAgent": {
+      "capabilities": {
+        "DOCUMENT_SEARCH": {
+          "keywords": [
+            "search",
+            "find",
+            "document",
+            "paper",
+            "buscar",
+            "encontrar",
+            "documento",
+            "articulo",
+            "investigación"
+          ],
+          "enabled": true,
+          "weight": 1.0
+        },
+        "SYNTHESIS": {
+          "keywords": [
+            "synthesize",
+            "combine",
+            "integrate",
+            "sintetizar",
+            "combinar",
+            "integrar"
+          ],
+          "enabled": true,
+          "weight": 1.0
+        },
+        "ACADEMIC_ANALYSIS": {
+          "keywords": [
+            "academic",
+            "research",
+            "study",
+            "academico",
+            "investigacion",
+            "estudio"
+          ],
+          "enabled": true,
+          "weight": 1.0
+        }
+      },
+      "threshold": 0.35,
+      "enabled": true
+    }
+  },
+  "global_settings": {
+    "case_sensitive": false,
+    "partial_match": true,
+    "last_updated": "2025-10-03T19:34:08.046753",
+    "updated_by": "system"
+  }
+}

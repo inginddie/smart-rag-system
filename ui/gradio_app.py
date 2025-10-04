@@ -4,6 +4,7 @@ from typing import List, Tuple
 from src.services.rag_service import RAGService
 from src.utils.logger import setup_logger
 from config.settings import settings
+from ui.components.admin_panel import AdminPanel
 
 logger = setup_logger()
 
@@ -13,6 +14,8 @@ class GradioRAGApp:
     def __init__(self):
         self.rag_service = RAGService()
         self.initialized = False
+        # Inicializar admin panel desde el inicio (no requiere que el servicio esté inicializado)
+        self.admin_panel = AdminPanel(self.rag_service)
     
     def initialize_service(self) -> str:
         """Inicializa el servicio RAG"""
@@ -39,6 +42,11 @@ class GradioRAGApp:
             result = self.rag_service.query(message)
             response = result['answer']
             
+            # Información del agente (si se usó)
+            agent_info = result.get('agent_info')
+            if agent_info and agent_info.get('agent_used'):
+                response += f"\n\n🤖 *Procesado por: {agent_info['agent_used']}*"
+            
             # Solo mostrar información técnica si se solicita explícitamente o en modo DEBUG
             model_info = result.get('model_info', {})
             should_show_technical = (
@@ -57,7 +65,7 @@ class GradioRAGApp:
             logger.error(f"Error in chat response: {e}")
             # Solo mostrar detalles técnicos si está habilitado
             if settings.show_technical_errors:
-            return f"❌ Error al procesar la pregunta: {str(e)}"
+                return f"❌ Error al procesar la pregunta: {str(e)}"
             else:
                 return "❌ Error al procesar la pregunta. Por favor, inténtalo de nuevo o contacta al administrador."
     
@@ -198,6 +206,10 @@ class GradioRAGApp:
                     - 📖 **Documentos por consulta**: `{settings.max_documents}`
                     """)
                 
+                # Tab de administración de keywords (HU2)
+                # El admin panel ya está inicializado en __init__
+                self.admin_panel.create_admin_interface()
+                
                 # Tab de ayuda académica
                 with gr.TabItem("📚 Guía de Investigación"):
                     gr.Markdown("""
@@ -284,3 +296,47 @@ class GradioRAGApp:
         
         logger.info(f"Launching RAG app with smart model selection on port {launch_kwargs['server_port']}")
         interface.launch(**launch_kwargs)
+   
+ # ======= AGENT SYSTEM UI METHODS =======
+    
+    def get_agent_stats_markdown(self) -> str:
+        """Genera markdown con estadísticas de agentes"""
+        if not self.initialized:
+            return "_Sistema no inicializado_"
+        
+        try:
+            stats = self.rag_service.get_agent_stats()
+            
+            if not stats.get('agents_enabled'):
+                return "_Sistema de agentes no habilitado_"
+            
+            md = "### 🤖 Sistema de Agentes\n\n"
+            md += f"**Total de agentes:** {stats['total_agents']}\n"
+            md += f"**Agentes activos:** {stats['active_agents']}\n"
+            md += f"**Queries procesadas:** {stats['total_queries']}\n\n"
+            
+            md += "**Agentes disponibles:**\n"
+            agents = self.rag_service.get_available_agents()
+            for agent in agents:
+                md += f"- **{agent['name']}**\n"
+                md += f"  - Capacidades: {', '.join(agent['capabilities'])}\n"
+                md += f"  - Queries: {agent['stats']['total_queries']}\n"
+                md += f"  - Success rate: {agent['stats']['success_rate']:.1%}\n"
+            
+            return md
+        except Exception as e:
+            return f"_Error obteniendo estadísticas: {e}_"
+    
+    def toggle_agents_ui(self, enabled: bool) -> str:
+        """Toggle del sistema de agentes desde la UI"""
+        try:
+            self.rag_service.toggle_agents(enabled)
+            status = "habilitado" if enabled else "deshabilitado"
+            return f"✅ Sistema de agentes {status}"
+        except Exception as e:
+            return f"❌ Error: {e}"
+
+
+if __name__ == "__main__":
+    app = GradioRAGApp()
+    app.launch()

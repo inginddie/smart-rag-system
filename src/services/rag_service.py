@@ -4,7 +4,7 @@ Enhanced RAG Service with HU5 Query Preprocessing & Validation Integration
 MODIFICATION of existing src/services/rag_service.py
 """
 
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from src.chains.rag_chain import RAGChain
 from src.storage.vector_store import VectorStoreManager
 from src.utils.logger import setup_logger
@@ -12,6 +12,7 @@ from src.utils.exceptions import RAGException
 from src.utils.faq_manager import FAQManager
 from src.utils.metrics import start_metrics_server
 from src.utils.quality_validator import academic_quality_validator
+from config.settings import settings
 
 # Existing Query Advisor and Analytics (HU4)
 from src.utils.query_advisor import query_advisor
@@ -22,10 +23,18 @@ from src.utils.intent_detector import IntentType
 from src.utils.query_validator import query_validator, ValidationResult
 from src.utils.refinement_suggester import refinement_suggester, RefinementResult
 
+# ======= AGENT SYSTEM IMPORTS =======
+from src.agents.base.registry import AgentRegistry
+from src.agents.specialized.document_search import create_document_search_agent
+from src.agents.base.fallback import AgentFallbackManager
+
+# ======= ADMIN SYSTEM IMPORTS =======
+from src.admin.keyword_manager import KeywordManager
+
 logger = setup_logger()
 
 class RAGService:
-    """RAG Service con Query Preprocessing (HU5), Query Advisor y Analytics integrados"""
+    """RAG Service con Query Preprocessing (HU5), Query Advisor, Analytics y Sistema de Agentes"""
     
     def __init__(self):
         self.vector_store_manager = VectorStoreManager()
@@ -40,6 +49,14 @@ class RAGService:
         # ======= NEW HU5 COMPONENTS =======
         self.query_validator = query_validator
         self.refinement_suggester = refinement_suggester
+        
+        # ======= AGENT SYSTEM =======
+        self.agent_registry = AgentRegistry()
+        self.fallback_manager = None  # Se inicializa después
+        self.use_agents = True  # Flag para habilitar/deshabilitar agentes
+        
+        # ======= ADMIN SYSTEM =======
+        self.keyword_manager = KeywordManager()  # Gestor de keywords
         
         self._initialized = False
     
@@ -61,14 +78,41 @@ class RAGService:
                 logger.info("Using existing indexed documents")
             
             self.rag_chain.create_chain()
+            
+            # ======= INITIALIZE AGENT SYSTEM =======
+            self._setup_agents()
+            
             self._initialized = True
-            logger.info("Enhanced RAG service initialized with HU5 Query Preprocessing, Query Advisor and Analytics")
+            logger.info("Enhanced RAG service initialized with HU5 Query Preprocessing, Query Advisor, Analytics and Agent System")
             start_metrics_server()
             return True
             
         except Exception as e:
             logger.error(f"Error initializing RAG service: {e}")
             raise RAGException(f"Failed to initialize RAG service: {e}")
+    
+    def _setup_agents(self):
+        """Configura el sistema de agentes especializados"""
+        try:
+            logger.info("Setting up agent system...")
+            
+            # Crear DocumentSearchAgent
+            doc_agent = create_document_search_agent(
+                vector_store_manager=self.vector_store_manager,
+                rag_chain=self.rag_chain
+            )
+            
+            # Registrar agente
+            self.agent_registry.register_agent(doc_agent)
+            
+            # Inicializar fallback manager
+            self.fallback_manager = AgentFallbackManager(rag_service=self)
+            
+            logger.info(f"Agent system ready: {len(self.agent_registry.get_all_agents())} agent(s) registered")
+            
+        except Exception as e:
+            logger.warning(f"Could not setup agents: {e}. Continuing without agent system.")
+            self.use_agents = False
     
     def _needs_indexing(self) -> bool:
         """Verifica si se necesita indexar documentos"""
@@ -176,8 +220,50 @@ class RAGService:
                         'fallback_used': True
                     }
             
-            # ======= CORE RAG PROCESSING (Existing Pipeline) =======
-            result = self.rag_chain.invoke(final_query)
+            # ======= AGENT ROUTING (NEW) =======
+            agent_used = None
+            if self.use_agents and self.agent_registry:
+                try:
+                    # Find best agent for this query
+                    best_agent = self.agent_registry.find_best_agent_for_query(final_query)
+                    
+                    if best_agent:  # Agent found with score >= 0.3
+                        logger.info(f"Agent routing: Using {best_agent.name}")
+                        
+                        # Use agent with fallback
+                        import asyncio
+                        agent_response = asyncio.run(
+                            self.fallback_manager.execute_with_fallback(
+                                best_agent,
+                                final_query,
+                                context={'include_sources': include_sources}
+                            )
+                        )
+                        
+                        # Convert agent response to standard format
+                        result = {
+                            'answer': agent_response.content,
+                            'model_info': {
+                                'selected_model': 'agent',
+                                'agent_name': agent_response.agent_name,
+                                'agent_confidence': agent_response.confidence
+                            },
+                            'intent_info': {},
+                            'template_info': {'agent_used': True}
+                        }
+                        agent_used = agent_response.agent_name
+                        logger.info(f"Agent {agent_used} processed query successfully")
+                    else:
+                        logger.debug(f"No suitable agent found, using classic RAG")
+                        result = self.rag_chain.invoke(final_query)
+                except Exception as e:
+                    logger.warning(f"Agent processing failed: {e}, falling back to classic RAG")
+                    import traceback
+                    traceback.print_exc()
+                    result = self.rag_chain.invoke(final_query)
+            else:
+                # ======= CORE RAG PROCESSING (Existing Pipeline) =======
+                result = self.rag_chain.invoke(final_query)
             
             # Registrar pregunta para FAQs
             self.faq_manager.log_question(question)
@@ -189,7 +275,8 @@ class RAGService:
                 'final_query_used': final_query,
                 'model_info': result.get('model_info', {}),
                 'intent_info': result.get('intent_info', {}),
-                'template_info': result.get('template_info', {})
+                'template_info': result.get('template_info', {}),
+                'agent_info': {'agent_used': agent_used} if agent_used else None
             }
             
             # ======= HU5 PREPROCESSING INFO (NEW) =======
@@ -616,3 +703,93 @@ class RAGService:
         except Exception as e:
             logger.error(f"Error getting detailed analysis: {e}")
             raise RAGException(f"Failed to get detailed analysis: {e}")
+
+    # ======= AGENT SYSTEM METHODS =======
+    
+    def get_agent_stats(self) -> Dict[str, Any]:
+        """Obtiene estadísticas del sistema de agentes"""
+        if not self.use_agents or not self.agent_registry:
+            return {'agents_enabled': False}
+        
+        try:
+            all_agents = self.agent_registry.get_all_agents()
+            health = self.agent_registry.health_check()
+            
+            total_queries = sum(agent.stats.total_queries for agent in all_agents)
+            
+            return {
+                'agents_enabled': True,
+                'total_agents': len(all_agents),
+                'active_agents': len([a for a in all_agents if a.stats.total_queries > 0]),
+                'total_queries': total_queries,
+                'agents_health': health,
+                'capability_coverage': self.agent_registry.get_capability_coverage()
+            }
+        except Exception as e:
+            logger.error(f"Error getting agent stats: {e}")
+            import traceback
+            traceback.print_exc()
+            return {'agents_enabled': True, 'error': str(e)}
+    
+    def toggle_agents(self, enabled: bool):
+        """Habilita o deshabilita el sistema de agentes"""
+        self.use_agents = enabled
+        logger.info(f"Agent system {'enabled' if enabled else 'disabled'}")
+    
+    def get_available_agents(self) -> List[Dict[str, Any]]:
+        """Obtiene lista de agentes disponibles"""
+        if not self.agent_registry:
+            return []
+        
+        agents = self.agent_registry.get_all_agents()
+        return [
+            {
+                'name': agent.name,
+                'agent_id': agent.agent_id,
+                'capabilities': [cap.value for cap in agent.get_capabilities()],
+                'stats': {
+                    'total_queries': agent.stats.total_queries,
+                    'success_rate': agent.stats.success_rate,
+                    'avg_confidence': agent.stats.avg_confidence
+                }
+            }
+            for agent in agents
+        ]
+
+    # ======= KEYWORD MANAGEMENT METHODS (HU2) =======
+    
+    def get_keyword_manager(self) -> KeywordManager:
+        """Obtiene el gestor de keywords"""
+        return self.keyword_manager
+    
+    def test_query_activation(self, query: str) -> Dict[str, Any]:
+        """Prueba qué agentes se activarían con una query"""
+        return self.keyword_manager.test_query_activation(query)
+    
+    def add_agent_keyword(self, agent_name: str, capability: str, keyword: str) -> bool:
+        """Agrega una keyword a un agente"""
+        return self.keyword_manager.add_keyword(agent_name, capability, keyword)
+    
+    def remove_agent_keyword(self, agent_name: str, capability: str, keyword: str) -> bool:
+        """Elimina una keyword de un agente"""
+        return self.keyword_manager.remove_keyword(agent_name, capability, keyword)
+    
+    def update_agent_threshold(self, agent_name: str, threshold: float) -> bool:
+        """Actualiza el threshold de activación de un agente"""
+        return self.keyword_manager.update_threshold(agent_name, threshold)
+    
+    def get_keyword_system_stats(self) -> Dict[str, Any]:
+        """Obtiene estadísticas del sistema de keywords"""
+        return self.keyword_manager.get_system_stats()
+    
+    def export_keyword_config(self) -> Dict[str, Any]:
+        """Exporta configuración de keywords"""
+        return self.keyword_manager.export_config()
+    
+    def import_keyword_config(self, config: Dict[str, Any]) -> Tuple[bool, List[str]]:
+        """Importa configuración de keywords"""
+        return self.keyword_manager.import_config(config)
+    
+    def reset_keywords_to_default(self) -> bool:
+        """Resetea keywords a configuración por defecto"""
+        return self.keyword_manager.reset_to_defaults()
