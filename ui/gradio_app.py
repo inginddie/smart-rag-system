@@ -5,6 +5,8 @@ from src.services.rag_service import RAGService
 from src.utils.logger import setup_logger
 from config.settings import settings
 from ui.components.admin_panel import AdminPanel
+from ui.components.memory_panel import MemoryPanel
+from ui.components.performance_panel import PerformancePanel
 
 logger = setup_logger()
 
@@ -14,8 +16,11 @@ class GradioRAGApp:
     def __init__(self):
         self.rag_service = RAGService()
         self.initialized = False
+        self.current_session_id = "default_session"  # Sesión por defecto
         # Inicializar admin panel desde el inicio (no requiere que el servicio esté inicializado)
         self.admin_panel = AdminPanel(self.rag_service)
+        self.memory_panel = MemoryPanel(self.rag_service)
+        self.performance_panel = PerformancePanel()  # Panel de performance
     
     def initialize_service(self) -> str:
         """Inicializa el servicio RAG"""
@@ -29,8 +34,8 @@ class GradioRAGApp:
             logger.error(f"Error initializing service: {e}")
             return f"❌ Error al inicializar: {str(e)}"
     
-    def chat_response(self, message: str, history: List[Tuple[str, str]], show_technical_info: bool = False) -> str:
-        """Maneja las respuestas del chat con control de información técnica"""
+    def chat_response(self, message: str, history: List[Tuple[str, str]], show_technical_info: bool = False, use_memory: bool = True) -> str:
+        """Maneja las respuestas del chat con control de información técnica y memoria"""
         if not self.initialized:
             return "❌ El sistema no está inicializado. Por favor inicialízalo primero."
         
@@ -38,14 +43,44 @@ class GradioRAGApp:
             return "Por favor, escribe una pregunta."
         
         try:
+            # Guardar mensaje del usuario en memoria
+            if use_memory:
+                self.rag_service.add_conversation_message(
+                    self.current_session_id,
+                    "user",
+                    message
+                )
+            
+            # Obtener contexto de conversación previa si está habilitado
+            context_info = ""
+            if use_memory:
+                context = self.rag_service.get_conversation_context(
+                    self.current_session_id,
+                    max_messages=3
+                )
+                if context:
+                    context_info = f"\n\n💭 _Usando contexto de conversación previa_"
+            
             # Obtener respuesta con información del modelo
             result = self.rag_service.query(message)
             response = result['answer']
+            
+            # Guardar respuesta del asistente en memoria
+            if use_memory:
+                self.rag_service.add_conversation_message(
+                    self.current_session_id,
+                    "assistant",
+                    response
+                )
             
             # Información del agente (si se usó)
             agent_info = result.get('agent_info')
             if agent_info and agent_info.get('agent_used'):
                 response += f"\n\n🤖 *Procesado por: {agent_info['agent_used']}*"
+            
+            # Agregar info de contexto si se usó
+            if context_info:
+                response += context_info
             
             # Solo mostrar información técnica si se solicita explícitamente o en modo DEBUG
             model_info = result.get('model_info', {})
@@ -209,6 +244,13 @@ class GradioRAGApp:
                 # Tab de administración de keywords (HU2)
                 # El admin panel ya está inicializado en __init__
                 self.admin_panel.create_admin_interface()
+                
+                # Tab de sistema de memoria (HU4)
+                self.memory_panel.create_memory_interface()
+                
+                # Tab de performance (HU5)
+                with gr.TabItem("📊 Performance"):
+                    self.performance_panel.create_interface()
                 
                 # Tab de ayuda académica
                 with gr.TabItem("📚 Guía de Investigación"):

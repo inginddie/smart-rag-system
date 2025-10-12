@@ -1,7 +1,7 @@
-# Sistema RAG Avanzado con Agentes Inteligentes
+# Sistema RAG Avanzado con Orquestación Multi-Agente
 ![image](https://github.com/user-attachments/assets/18a05e72-63bc-4ba0-8940-d4012af75a8e)
 
-Un sistema completo de Retrieval-Augmented Generation (RAG) con arquitectura de agentes especializados, construido con Python, LangChain y Gradio.
+Un sistema completo de Retrieval-Augmented Generation (RAG) con arquitectura de agentes especializados, orquestación inteligente y monitoreo de performance en tiempo real.
 
 ## 🚀 Características Principales
 
@@ -14,7 +14,7 @@ Un sistema completo de Retrieval-Augmented Generation (RAG) con arquitectura de 
 - **Configuración centralizada** con variables de entorno
 - **Manejo robusto de errores**
 - **Arquitectura modular y escalable**
-- **Tests unitarios incluidos**
+- **Tests unitarios completos** (50+ tests)
 
 ### 🤖 Sistema de Agentes Especializados
 - **DocumentSearchAgent**: Búsqueda semántica avanzada y síntesis académica
@@ -23,7 +23,23 @@ Un sistema completo de Retrieval-Augmented Generation (RAG) con arquitectura de 
 - **Métricas y Observabilidad**: Estadísticas detalladas por agente
 - **Activación Inteligente**: Selección automática del mejor agente
 
-### 🔧 Administración de Keywords (NUEVO)
+### 🎯 Orquestación Multi-Agente (NUEVO)
+- **AgentSelector**: Selección inteligente basada en keywords y scoring
+- **AgentOrchestrator**: Coordinación de múltiples agentes
+- **WorkflowEngine**: Ejecución secuencial y paralela de workflows
+- **Circuit Breakers**: Protección contra agentes lentos o fallidos
+- **Load Balancer**: Distribución inteligente de carga (4 estrategias)
+- **Performance Monitor**: Métricas detalladas con percentiles P50/P90/P95/P99
+
+### 📊 Dashboard de Performance (NUEVO)
+- **Panel en Gradio**: 6 pestañas de visualización en tiempo real
+- **API REST**: 10 endpoints con FastAPI y documentación Swagger
+- **Métricas Globales**: Throughput, latencia, tasa de éxito
+- **Alertas**: Detección automática de agentes lentos o con fallos
+- **Gestión de Circuit Breakers**: Reset manual desde el UI
+- **Exportación**: Reportes JSON completos
+
+### 🔧 Administración de Keywords
 - **Gestión Dinámica**: Agregar/eliminar keywords sin código
 - **Pruebas en Tiempo Real**: Verificar activación de agentes con queries
 - **Configuración de Threshold**: Ajustar sensibilidad de activación
@@ -31,21 +47,26 @@ Un sistema completo de Retrieval-Augmented Generation (RAG) con arquitectura de 
 - **Persistencia Segura**: Backups automáticos de configuración
 - **Panel de Administración**: Interfaz intuitiva en Gradio
 
+### 💾 Sistema de Memoria Conversacional
+- **Memoria por Sesión**: Contexto persistente entre consultas
+- **Gestión de Sesiones**: Crear, listar, cambiar y eliminar sesiones
+- **Historial Completo**: Ver conversaciones pasadas
+- **Exportación**: Descargar historial en JSON
+- **Integración Transparente**: Funciona con todos los agentes
+
 ## 📦 Instalación Rápida
 
-### 1. Generar el proyecto
+### 1. Clonar el repositorio
 ```bash
-python generate_rag_project.py
+git clone <repository-url>
+cd RAG
 ```
-Las funciones reutilizables para crear directorios y archivos se
-encuentran en `src/utils/project_setup.py` por si deseas utilizarlas
-desde tu propio código.
 
 ### 2. Crear entorno virtual
 ```bash
 python -m venv venv
 source venv/bin/activate  # Linux/Mac
-# venv\Scripts\activate  # Windows
+venv\Scripts\activate     # Windows
 ```
 
 ### 3. Instalar dependencias
@@ -56,48 +77,115 @@ pip install -r requirements.txt
 ### 4. Configurar variables de entorno
 ```bash
 # Copia el template de configuración
-cp config.template .env
+cp .env.template .env
 
 # Edita .env y configura tu API key de OpenAI
 # OPENAI_API_KEY=tu_api_key_aqui
 ```
 
 ### 5. Lanzar la aplicación
+
+#### Opción A: UI + API (Recomendado)
 ```bash
-python main.py --mode ui
+python launch_with_api.py
+```
+Acceder a:
+- **Gradio UI**: http://localhost:7860
+- **Performance API**: http://localhost:8000
+- **API Docs**: http://localhost:8000/docs
+
+#### Opción B: Solo UI
+```bash
+python launch_with_api.py --ui-only
+```
+
+#### Opción C: Solo API
+```bash
+python launch_with_api.py --api-only
 ```
 
 ## 🎯 Uso Rápido
 
 ### Inicio Básico
 1. **Coloca documentos** en `data/documents/`
-2. **Lanza la aplicación**: `python launch_app.py`
-3. **Abre** el navegador (se abre automáticamente)
+2. **Lanza la aplicación**: `python launch_with_api.py`
+3. **Abre** el navegador en http://localhost:7860
 4. **Inicializa** el sistema en la pestaña "⚙️ Administración"
 5. **Haz preguntas** en la pestaña "💬 Chat Académico"
 
-### 🔧 Gestión de Keywords (Nuevo)
+### 📊 Dashboard de Performance (Nuevo)
+1. **Ve a la pestaña** "📊 Performance"
+2. **Explora las 6 secciones**:
+   - 📈 Métricas Globales
+   - 🤖 Agentes
+   - 🔌 Circuit Breakers
+   - ⚠️ Alertas
+   - ⚖️ Load Balancer
+   - 📋 Reporte JSON
+3. **Click en "🔄 Actualizar"** para ver métricas en tiempo real
+4. **Gestiona circuit breakers** con reset manual si es necesario
+
+### 🔧 Gestión de Keywords
 1. **Ve al tab** "🔧 Administración"
 2. **Prueba queries** en tiempo real
 3. **Agrega keywords** por capacidad
 4. **Ajusta threshold** según necesites
 5. **Exporta/importa** configuraciones
 
-**Ejemplo**: Agregar soporte para portugués
-```
-1. Expandir "DOCUMENT_SEARCH"
-2. Agregar: "pesquisar"
-3. Agregar: "procurar"
-4. Probar: "Pesquisar documentos sobre IA"
+### 🌐 API REST
+```bash
+# Métricas globales
+curl http://localhost:8000/api/performance/metrics
+
+# Reporte completo
+curl http://localhost:8000/api/performance/report
+
+# Health check
+curl http://localhost:8000/api/performance/health
+
+# Documentación interactiva
+# Abrir: http://localhost:8000/docs
 ```
 
 ## 📁 Estructura del Proyecto
 
 ```
-rag_system/
+RAG/
+├── src/
+│   ├── agents/
+│   │   ├── base/                # Agentes base y registro
+│   │   └── orchestration/       # Sistema de orquestación (NUEVO)
+│   │       ├── selector.py      # Selector de agentes
+│   │       ├── orchestrator.py  # Orquestador principal
+│   │       ├── workflow.py      # Motor de workflows
+│   │       ├── circuit_breaker.py    # Circuit breakers
+│   │       ├── load_balancer.py      # Balanceador de carga
+│   │       └── performance_monitor.py # Monitor de performance
+│   ├── api/                     # API REST (NUEVO)
+│   │   ├── app.py              # Aplicación FastAPI
+│   │   └── performance_routes.py # Rutas de performance
+│   ├── services/               # Servicios principales
+│   ├── memory/                 # Sistema de memoria
+│   └── utils/                  # Utilidades
+├── ui/
+│   ├── components/
+│   │   ├── admin_panel.py      # Panel de administración
+│   │   ├── memory_panel.py     # Panel de memoria
+│   │   └── performance_panel.py # Panel de performance (NUEVO)
+│   └── gradio_app.py           # Aplicación Gradio
+├── tests/
+│   └── agents/
+│       ├── test_orchestrator.py # Tests de orquestación
+│       ├── test_workflow.py     # Tests de workflows
+│       └── test_performance_optimization.py # Tests de performance
+├── docs/                        # Documentación completa
+│   ├── PERFORMANCE_UI_GUIDE.md
+│   ├── INTEGRACION_PERFORMANCE_UI.md
+│   ├── QUICKSTART_PERFORMANCE.md
+│   └── DEMO_PERFORMANCE_DASHBOARD.md
 ├── config/                      # Configuración
-│   ├── agent_keywords.json      # Keywords de agentes (NUEVO)
-│   └── backups/                 # Backups automáticos (NUEVO)
+│   ├── agent_keywords.json      # Keywords de agentes
+│   └── backups/                 # Backups automáticos
 ├── src/
 │   ├── admin/                   # Administración de keywords (NUEVO)
 │   │   ├── keyword_manager.py   # Gestor de keywords
@@ -458,3 +546,271 @@ MIT License - ver LICENSE para detalles.
 ![image](https://github.com/user-attachments/assets/a7684860-7773-43fc-8287-336298720e8e)
 
 
+
+
+## 🎯 Sistema de Orquestación Multi-Agente
+
+### Componentes Principales
+
+#### 1. AgentSelector
+Selecciona el agente más apropiado basándose en keywords y scoring:
+- Análisis de query con keywords configurables
+- Sistema de scoring con umbral ajustable
+- Fallback automático a agente general
+- Tracking de decisiones
+
+#### 2. AgentOrchestrator
+Coordina la ejecución de múltiples agentes:
+- Integración con selector y workflow engine
+- Gestión de contexto y sesiones
+- Métricas de ejecución
+- Manejo de errores robusto
+
+#### 3. WorkflowEngine
+Motor de ejecución de workflows:
+- **Ejecución secuencial**: Agentes en orden
+- **Ejecución paralela**: Múltiples agentes simultáneos
+- **Síntesis de resultados**: Combina respuestas de múltiples agentes
+- **Detección automática**: Identifica queries que requieren múltiples agentes
+
+#### 4. Circuit Breakers
+Protección contra agentes problemáticos:
+- **Estados**: CLOSED (normal), OPEN (bloqueado), HALF_OPEN (recuperación)
+- **Configuración flexible**: Umbrales personalizables
+- **Métricas detalladas**: Tracking de llamadas y fallos
+- **Reset manual**: Desde UI o API
+
+#### 5. Load Balancer
+Distribución inteligente de carga:
+- **4 Estrategias**: Round Robin, Least Connections, Weighted Response Time, Random
+- **Load Score**: Basado en conexiones, latencia y tasa de éxito
+- **Agentes saludables**: Identificación automática
+- **Cambio dinámico**: Ajuste de estrategia en tiempo real
+
+#### 6. Performance Monitor
+Monitoreo detallado de performance:
+- **Métricas por agente**: Latencia, throughput, tasa de éxito
+- **Percentiles**: P50, P90, P95, P99
+- **Detección de problemas**: Agentes lentos o con fallos
+- **Reportes completos**: Exportación JSON
+
+### Métricas y Umbrales
+
+| Métrica | Bueno | Atención | Crítico |
+|---------|-------|----------|---------|
+| Success Rate | > 95% | 80-95% | < 80% |
+| Latencia | < 2s | 2-5s | > 5s |
+| Tasa de Fallos | < 5% | 5-10% | > 10% |
+
+### Uso del Dashboard
+
+```bash
+# Iniciar aplicación con UI + API
+python launch_with_api.py
+
+# Acceder al dashboard
+# http://localhost:7860 → Pestaña "📊 Performance"
+
+# API REST
+# http://localhost:8000/docs
+```
+
+## 📚 Documentación Completa
+
+### Guías Disponibles
+
+1. **HU5_SISTEMA_ORQUESTACION_COMPLETO.md** - Documentación completa del sistema
+2. **docs/QUICKSTART_PERFORMANCE.md** - Inicio rápido (5 minutos)
+3. **docs/PERFORMANCE_UI_GUIDE.md** - Guía completa de uso
+4. **docs/INTEGRACION_PERFORMANCE_UI.md** - Documentación técnica
+5. **docs/DEMO_PERFORMANCE_DASHBOARD.md** - Demo funcional
+
+### Tests
+
+```bash
+# Tests completos de orquestación
+pytest tests/agents/test_workflow.py tests/agents/test_orchestrator.py tests/agents/test_performance_optimization.py -v
+
+# Resultado: 50/50 tests passed ✅
+```
+
+## 🎓 Ejemplos de Uso
+
+### Monitoreo de Performance
+
+```python
+import requests
+
+# Verificar salud del sistema
+response = requests.get('http://localhost:8000/api/performance/health')
+data = response.json()
+
+if data['status'] == 'healthy':
+    print("✅ Sistema saludable")
+else:
+    print(f"⚠️ Sistema degradado: {data}")
+```
+
+### Detección de Agentes Lentos
+
+```python
+# Obtener agentes lentos (> 3 segundos)
+response = requests.get(
+    'http://localhost:8000/api/performance/slow-agents',
+    params={'threshold_ms': 3000}
+)
+data = response.json()
+
+if data['data']['count'] > 0:
+    print(f"⚠️ {data['data']['count']} agentes lentos detectados")
+```
+
+### Reset de Circuit Breaker
+
+```python
+# Resetear circuit breaker después de resolver problema
+agent_name = "QueryAgent"
+response = requests.post(
+    f'http://localhost:8000/api/performance/circuit-breakers/{agent_name}/reset'
+)
+print(response.json()['message'])
+```
+
+## 🚀 Características Avanzadas
+
+### Ejecución Paralela de Agentes
+
+El sistema detecta automáticamente queries que requieren múltiples agentes:
+
+```python
+# Query que activa múltiples agentes
+query = "Busca documentos sobre IA y analiza las metodologías"
+
+# El sistema:
+# 1. Detecta que requiere DocumentSearchAgent y AnalysisAgent
+# 2. Los ejecuta en paralelo
+# 3. Sintetiza los resultados
+# 4. Retorna respuesta unificada
+```
+
+### Circuit Breakers Automáticos
+
+Protección automática contra agentes problemáticos:
+
+```python
+# Si un agente falla 5 veces consecutivas:
+# 1. Circuit breaker se abre (OPEN)
+# 2. Requests son rechazadas automáticamente
+# 3. Después de 60 segundos, intenta recuperación (HALF_OPEN)
+# 4. Si tiene éxito, vuelve a normal (CLOSED)
+```
+
+### Load Balancing Inteligente
+
+Distribución basada en métricas reales:
+
+```python
+# El load balancer considera:
+# - Conexiones activas del agente
+# - Tiempo de respuesta promedio
+# - Tasa de éxito reciente
+# - Load score calculado
+
+# Selecciona automáticamente el agente más apropiado
+```
+
+## 🔧 Configuración Avanzada
+
+### Circuit Breakers
+
+```python
+# En src/agents/orchestration/circuit_breaker.py
+@dataclass
+class CircuitBreakerConfig:
+    failure_threshold: int = 5      # Fallos antes de abrir
+    success_threshold: int = 2      # Éxitos para cerrar
+    timeout: float = 60.0           # Segundos antes de intentar recovery
+    slow_call_threshold: float = 10.0  # Umbral de llamada lenta
+```
+
+### Load Balancer
+
+```python
+# Cambiar estrategia de balanceo
+from src.agents.orchestration import LoadBalancingStrategy
+
+workflow_engine.load_balancer.change_strategy(
+    LoadBalancingStrategy.LEAST_CONNECTIONS
+)
+```
+
+## 🐛 Troubleshooting
+
+### Puerto en uso
+
+```bash
+# Si el puerto 8000 está en uso, usar otro:
+python launch_with_api.py --api-port 8001
+```
+
+### Panel de Performance vacío
+
+**Solución**: Ejecutar algunas consultas primero para generar métricas.
+
+### Circuit Breaker siempre OPEN
+
+**Solución**:
+1. Revisar logs en `logs/app.log`
+2. Corregir problema del agente
+3. Resetear circuit breaker desde el UI
+
+## 📊 Estado del Proyecto
+
+| Componente | Estado | Tests | Docs |
+|------------|--------|-------|------|
+| Sistema RAG Base | ✅ | ✅ | ✅ |
+| Agentes Especializados | ✅ | ✅ | ✅ |
+| Orquestación Multi-Agente | ✅ | ✅ | ✅ |
+| Circuit Breakers | ✅ | ✅ | ✅ |
+| Load Balancer | ✅ | ✅ | ✅ |
+| Performance Monitor | ✅ | ✅ | ✅ |
+| Dashboard Gradio | ✅ | N/A | ✅ |
+| API REST | ✅ | N/A | ✅ |
+| Sistema de Memoria | ✅ | ✅ | ✅ |
+| Administración Keywords | ✅ | ✅ | ✅ |
+
+**Total**: 10/10 componentes ✅ | 50+ tests ✅ | Documentación completa ✅
+
+## 🎉 Conclusión
+
+Sistema RAG completo con:
+- ✅ Orquestación multi-agente inteligente
+- ✅ Monitoreo de performance en tiempo real
+- ✅ Circuit breakers y load balancing
+- ✅ Dashboard interactivo (Gradio + FastAPI)
+- ✅ Sistema de memoria conversacional
+- ✅ Administración dinámica de keywords
+- ✅ Tests exhaustivos (50+ tests)
+- ✅ Documentación completa
+
+**Para empezar**:
+```bash
+python launch_with_api.py
+```
+
+Luego abre http://localhost:7860 y explora todas las funcionalidades.
+
+## 📞 Soporte
+
+- **Documentación**: Ver carpeta `docs/`
+- **Tests**: `pytest tests/agents/ -v`
+- **Logs**: `logs/app.log`
+- **Issues**: Crear issue en el repositorio
+
+## 📄 Licencia
+
+MIT License - Ver archivo LICENSE para más detalles.
+
+---
+
+**Desarrollado con ❤️ para investigación académica en IA**

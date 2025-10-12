@@ -120,3 +120,11 @@ typing-extensions>=4.7.0
 
 # OpenAI (backup direct client)
 openai>=1.0.0
+
+#
+ ================================
+# PERFORMANCE MONITORING (HU5)
+# ================================
+# FastAPI para Performance API
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0

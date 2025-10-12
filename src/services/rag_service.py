@@ -31,6 +31,9 @@ from src.agents.base.fallback import AgentFallbackManager
 # ======= ADMIN SYSTEM IMPORTS =======
 from src.admin.keyword_manager import KeywordManager
 
+# ======= MEMORY SYSTEM IMPORTS =======
+from src.memory.manager import MemoryManager
+
 logger = setup_logger()
 
 class RAGService:
@@ -57,6 +60,13 @@ class RAGService:
         
         # ======= ADMIN SYSTEM =======
         self.keyword_manager = KeywordManager()  # Gestor de keywords
+        
+        # ======= MEMORY SYSTEM =======
+        self.memory_manager = MemoryManager(
+            max_conversation_length=50,
+            max_semantic_memories=100,
+            conversation_ttl_days=30
+        )
         
         self._initialized = False
     
@@ -102,13 +112,32 @@ class RAGService:
                 rag_chain=self.rag_chain
             )
             
+            # Asignar memory manager al agente
+            doc_agent.memory_manager = self.memory_manager
+            
             # Registrar agente
             self.agent_registry.register_agent(doc_agent)
+            
+            # Registrar ComparisonAgent (HU3)
+            from src.agents.specialized.comparison import create_comparison_agent
+            comparison_agent = create_comparison_agent(self.vector_store_manager)
+            comparison_agent.memory_manager = self.memory_manager
+            self.agent_registry.register_agent(comparison_agent)
             
             # Inicializar fallback manager
             self.fallback_manager = AgentFallbackManager(rag_service=self)
             
+            # Inicializar orquestador (HU5)
+            from src.agents.orchestration.orchestrator import AgentOrchestrator
+            self.orchestrator = AgentOrchestrator(
+                agent_registry=self.agent_registry,
+                confidence_threshold=0.7,
+                enable_multi_agent=False  # Por ahora deshabilitado
+            )
+            
             logger.info(f"Agent system ready: {len(self.agent_registry.get_all_agents())} agent(s) registered")
+            logger.info("Memory system integrated with all agents")
+            logger.info("Agent orchestrator initialized (HU5)")
             
         except Exception as e:
             logger.warning(f"Could not setup agents: {e}. Continuing without agent system.")
@@ -220,44 +249,43 @@ class RAGService:
                         'fallback_used': True
                     }
             
-            # ======= AGENT ROUTING (NEW) =======
+            # ======= AGENT ORCHESTRATION (HU5) =======
             agent_used = None
-            if self.use_agents and self.agent_registry:
+            if self.use_agents and hasattr(self, 'orchestrator') and self.orchestrator:
                 try:
-                    # Find best agent for this query
-                    best_agent = self.agent_registry.find_best_agent_for_query(final_query)
+                    # Use orchestrator for intelligent agent selection
+                    import asyncio
                     
-                    if best_agent:  # Agent found with score >= 0.3
-                        logger.info(f"Agent routing: Using {best_agent.name}")
-                        
-                        # Use agent with fallback
-                        import asyncio
-                        agent_response = asyncio.run(
-                            self.fallback_manager.execute_with_fallback(
-                                best_agent,
-                                final_query,
-                                context={'include_sources': include_sources}
-                            )
+                    # Define fallback handler
+                    def fallback_handler(query):
+                        return self.rag_chain.invoke(query)
+                    
+                    # Orchestrate agent execution
+                    orchestration_result = asyncio.run(
+                        self.orchestrator.orchestrate(
+                            query=final_query,
+                            context={'include_sources': include_sources},
+                            fallback_handler=fallback_handler
                         )
-                        
-                        # Convert agent response to standard format
-                        result = {
-                            'answer': agent_response.content,
-                            'model_info': {
-                                'selected_model': 'agent',
-                                'agent_name': agent_response.agent_name,
-                                'agent_confidence': agent_response.confidence
-                            },
-                            'intent_info': {},
-                            'template_info': {'agent_used': True}
-                        }
-                        agent_used = agent_response.agent_name
-                        logger.info(f"Agent {agent_used} processed query successfully")
-                    else:
-                        logger.debug(f"No suitable agent found, using classic RAG")
-                        result = self.rag_chain.invoke(final_query)
+                    )
+                    
+                    # Extract result
+                    result = {
+                        'answer': orchestration_result.get('answer', ''),
+                        'model_info': {
+                            'selected_model': 'agent' if not orchestration_result.get('metadata', {}).get('fallback') else 'classic',
+                            'agent_name': orchestration_result.get('agent_name', 'unknown'),
+                            'agent_confidence': orchestration_result.get('confidence', 0.0)
+                        },
+                        'intent_info': {},
+                        'template_info': {'agent_used': not orchestration_result.get('metadata', {}).get('fallback', False)},
+                        'orchestration_info': orchestration_result.get('orchestration', {})
+                    }
+                    agent_used = orchestration_result.get('agent_name')
+                    logger.info(f"Orchestration completed: agent={agent_used}")
+                    
                 except Exception as e:
-                    logger.warning(f"Agent processing failed: {e}, falling back to classic RAG")
+                    logger.warning(f"Orchestration failed: {e}, falling back to classic RAG")
                     import traceback
                     traceback.print_exc()
                     result = self.rag_chain.invoke(final_query)
@@ -793,3 +821,37 @@ class RAGService:
     def reset_keywords_to_default(self) -> bool:
         """Resetea keywords a configuración por defecto"""
         return self.keyword_manager.reset_to_defaults()
+
+    # ======= MEMORY MANAGEMENT METHODS (HU4) =======
+    
+    def add_conversation_message(self, session_id: str, role: str, content: str, metadata: Optional[Dict] = None):
+        """Agrega un mensaje a la conversación"""
+        self.memory_manager.add_message(session_id, role, content, metadata)
+    
+    def get_conversation_history(self, session_id: str, limit: Optional[int] = None) -> List[Dict]:
+        """Obtiene el historial de conversación"""
+        return self.memory_manager.get_conversation_history(session_id, limit)
+    
+    def get_conversation_context(self, session_id: str, max_messages: int = 5) -> str:
+        """Obtiene contexto reciente de la conversación"""
+        return self.memory_manager.get_recent_context(session_id, max_messages)
+    
+    def clear_conversation(self, session_id: str) -> bool:
+        """Limpia una conversación específica"""
+        return self.memory_manager.clear_session(session_id)
+    
+    def get_all_conversations(self) -> List[str]:
+        """Obtiene lista de todas las conversaciones activas"""
+        return self.memory_manager.get_all_sessions()
+    
+    def get_conversation_summary(self, session_id: str) -> Dict[str, Any]:
+        """Obtiene resumen de una conversación"""
+        return self.memory_manager.get_session_summary(session_id)
+    
+    def get_memory_stats(self) -> Dict[str, Any]:
+        """Obtiene estadísticas del sistema de memoria"""
+        return self.memory_manager.get_stats()
+    
+    def search_agent_memories(self, query: str, agent_id: Optional[str] = None, top_k: int = 5) -> List[Dict]:
+        """Busca en las memorias de los agentes"""
+        return self.memory_manager.search_memories(query, agent_id, top_k)
