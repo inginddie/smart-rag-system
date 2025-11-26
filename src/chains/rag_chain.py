@@ -23,25 +23,32 @@ from src.utils.tracing import trace_llm
 # ======= NUEVAS IMPORTACIONES PARA TEMPLATE ORCHESTRATOR =======
 from src.utils.intent_detector import intent_detector, IntentType
 from src.utils.template_orchestrator import template_orchestrator
+# ======= DYNAMIC PROMPT ORCHESTRATOR (HU: Configuración de Prompts Dinámicos) =======
+from src.utils.dynamic_prompt_orchestrator import dynamic_prompt_orchestrator
 import asyncio
 
 logger = setup_logger()
 
 class RAGChain:
-    """RAG Chain con Template Orchestrator integrado"""
-    
-    def __init__(self, 
+    """RAG Chain con Template Orchestrator integrado y Prompts Dinámicos por Sector"""
+
+    def __init__(self,
                  system_prompt: Optional[str] = None,
-                 temperature: float = 0.1):
-        
+                 temperature: float = 0.1,
+                 use_dynamic_prompts: bool = True):
+
         self.temperature = temperature
         self.vector_store_manager = VectorStoreManager()
-        
+
         # Modelo selector (lazy loading)
         self._model_selector = None
-        
-        # Template orchestrator
+
+        # Template orchestrator (legacy - para backward compatibility)
         self.template_orchestrator = template_orchestrator
+
+        # Dynamic Prompt Orchestrator (nuevo sistema configurable)
+        self.dynamic_prompt_orchestrator = dynamic_prompt_orchestrator
+        self.use_dynamic_prompts = use_dynamic_prompts
         
         # Prompt por defecto
         self.system_prompt = system_prompt or self._get_default_system_prompt()
@@ -52,8 +59,9 @@ class RAGChain:
         
         # Template integration habilitado
         self.template_integration_enabled = getattr(settings, 'enable_intent_detection', True)
-        
-        logger.info(f"RAG Chain initialized with template orchestrator: {'enabled' if self.template_integration_enabled else 'disabled'}")
+
+        prompt_mode = "dynamic" if self.use_dynamic_prompts else "legacy"
+        logger.info(f"RAG Chain initialized - prompt mode: {prompt_mode}, template orchestrator: {'enabled' if self.template_integration_enabled else 'disabled'}")
     
     @property
     def model_selector(self):
@@ -189,58 +197,85 @@ Responde con rigor académico, precisión científica y enfoque específico en i
         try:
             logger.debug(f"Processing query with enhanced RAG Chain: {query[:100]}...")
             
-            # ======= TEMPLATE ORCHESTRATOR INTEGRATION =======
+            # ======= PROMPT ORCHESTRATION =======
             template_info = None
             specialized_prompt = None
             intent_info = None
-            
+            dynamic_prompt_info = None
+
             if self.template_integration_enabled:
                 try:
                     # 1. Intent Detection
                     intent_info = self._detect_intent_sync(query)
-                    
-                    if intent_info.get('intent_result_object'):
-                        # 2. Model Selection (para user expertise y complexity)
-                        if settings.enable_smart_selection:
-                            selected_model, complexity_score, reasoning = self.model_selector.select_model(query)
-                        else:
-                            selected_model = settings.default_model
-                            complexity_score = 0.5
-                            reasoning = "Smart selection disabled"
-                        
-                        # 3. Template Selection via Orchestrator
-                        template_selection = self.template_orchestrator.select_template(
-                            intent_result=intent_info['intent_result_object'],
-                            user_expertise="intermediate",  # TODO: obtener de user profile
-                            query_complexity=complexity_score,
-                            base_prompt=self.system_prompt
-                        )
-                        
-                        # 4. Usar template especializado si selection fue exitosa
-                        if not template_selection.fallback_used:
-                            specialized_prompt = template_selection.template_prompt
-                            template_info = {
-                                'template_used': True,
-                                'selection_reason': template_selection.selection_reason,
-                                'confidence_score': template_selection.confidence_score,
-                                'processing_time_ms': template_selection.processing_time_ms,
-                                'template_metadata': {
-                                    'sections': template_selection.template_metadata.sections,
-                                    'expected_length': template_selection.template_metadata.expected_length,
-                                    'academic_rigor': template_selection.template_metadata.academic_rigor
+
+                    # ======= DYNAMIC PROMPTS (NUEVO SISTEMA CONFIGURABLE) =======
+                    if self.use_dynamic_prompts:
+                        # Sistema de prompts dinámicos por sector
+                        if intent_info.get('intent_result_object'):
+                            dynamic_result = self.dynamic_prompt_orchestrator.get_prompts_for_query(
+                                query=query,
+                                intent_result=intent_info['intent_result_object'],
+                                context=None  # Se llenará después con documentos recuperados
+                            )
+
+                            # Usar el system prompt del sector activo
+                            specialized_prompt = dynamic_result.system_prompt
+
+                            dynamic_prompt_info = {
+                                'prompt_mode': 'dynamic',
+                                'sector_id': dynamic_result.sector_id,
+                                'sector_name': dynamic_result.sector_name,
+                                'intent_type': dynamic_result.intent_type,
+                                'guidelines': dynamic_result.guidelines,
+                                'metadata': dynamic_result.metadata
+                            }
+
+                            logger.info(f"Using dynamic prompts - Sector: {dynamic_result.sector_name}, Intent: {dynamic_result.intent_type}")
+
+                    # ======= LEGACY TEMPLATE ORCHESTRATOR (BACKWARD COMPATIBILITY) =======
+                    else:
+                        if intent_info.get('intent_result_object'):
+                            # 2. Model Selection (para user expertise y complexity)
+                            if settings.enable_smart_selection:
+                                selected_model, complexity_score, reasoning = self.model_selector.select_model(query)
+                            else:
+                                selected_model = settings.default_model
+                                complexity_score = 0.5
+                                reasoning = "Smart selection disabled"
+
+                            # 3. Template Selection via Orchestrator
+                            template_selection = self.template_orchestrator.select_template(
+                                intent_result=intent_info['intent_result_object'],
+                                user_expertise="intermediate",  # TODO: obtener de user profile
+                                query_complexity=complexity_score,
+                                base_prompt=self.system_prompt
+                            )
+
+                            # 4. Usar template especializado si selection fue exitosa
+                            if not template_selection.fallback_used:
+                                specialized_prompt = template_selection.template_prompt
+                                template_info = {
+                                    'template_used': True,
+                                    'selection_reason': template_selection.selection_reason,
+                                    'confidence_score': template_selection.confidence_score,
+                                    'processing_time_ms': template_selection.processing_time_ms,
+                                    'template_metadata': {
+                                        'sections': template_selection.template_metadata.sections,
+                                        'expected_length': template_selection.template_metadata.expected_length,
+                                        'academic_rigor': template_selection.template_metadata.academic_rigor
+                                    }
                                 }
-                            }
-                            logger.info(f"Using specialized template for {intent_info['detected_intent']}")
-                        else:
-                            template_info = {
-                                'template_used': False,
-                                'selection_reason': template_selection.selection_reason,
-                                'fallback_used': True
-                            }
-                            logger.info("Using default prompt - template selection fell back")
-                    
+                                logger.info(f"Using specialized template for {intent_info['detected_intent']}")
+                            else:
+                                template_info = {
+                                    'template_used': False,
+                                    'selection_reason': template_selection.selection_reason,
+                                    'fallback_used': True
+                                }
+                                logger.info("Using default prompt - template selection fell back")
+
                 except Exception as e:
-                    logger.error(f"Error in template orchestration: {e}")
+                    logger.error(f"Error in prompt orchestration: {e}")
                     template_info = {
                         'template_used': False,
                         'error': str(e),
@@ -291,12 +326,16 @@ Responde con rigor académico, precisión científica y enfoque específico en i
                 'complexity_score': complexity_score,
                 'reasoning': reasoning
             }
-            
+
             if intent_info:
                 result['intent_info'] = intent_info
-            
+
             if template_info:
                 result['template_info'] = template_info
+
+            # Dynamic Prompt Info (nuevo sistema configurable)
+            if dynamic_prompt_info:
+                result['dynamic_prompt_info'] = dynamic_prompt_info
             
             # Información de expansión si existe
             expansion_info = None
