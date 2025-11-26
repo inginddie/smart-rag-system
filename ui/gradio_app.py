@@ -7,20 +7,22 @@ from config.settings import settings
 from ui.components.admin_panel import AdminPanel
 from ui.components.memory_panel import MemoryPanel
 from ui.components.performance_panel import PerformancePanel
+from ui.components.prompt_design_panel import PromptDesignPanel
 
 logger = setup_logger()
 
 class GradioRAGApp:
-    """Aplicación Gradio para el sistema RAG con selección inteligente de modelos"""
-    
+    """Aplicación Gradio para el sistema RAG con selección inteligente de modelos y prompts dinámicos"""
+
     def __init__(self):
         self.rag_service = RAGService()
         self.initialized = False
         self.current_session_id = "default_session"  # Sesión por defecto
-        # Inicializar admin panel desde el inicio (no requiere que el servicio esté inicializado)
+        # Inicializar paneles desde el inicio (no requiere que el servicio esté inicializado)
         self.admin_panel = AdminPanel(self.rag_service)
         self.memory_panel = MemoryPanel(self.rag_service)
         self.performance_panel = PerformancePanel()  # Panel de performance
+        self.prompt_design_panel = PromptDesignPanel()  # Panel de diseño de prompts
     
     def initialize_service(self) -> str:
         """Inicializa el servicio RAG"""
@@ -77,7 +79,14 @@ class GradioRAGApp:
             agent_info = result.get('agent_info')
             if agent_info and agent_info.get('agent_used'):
                 response += f"\n\n🤖 *Procesado por: {agent_info['agent_used']}*"
-            
+
+            # Información del sector activo (sistema de prompts dinámicos)
+            dynamic_prompt_info = result.get('dynamic_prompt_info')
+            if dynamic_prompt_info:
+                sector_name = dynamic_prompt_info.get('sector_name', 'N/A')
+                intent_type = dynamic_prompt_info.get('intent_type', 'GENERAL')
+                response += f"\n\n🎯 *Sector: {sector_name} | Tipo: {intent_type}*"
+
             # Agregar info de contexto si se usó
             if context_info:
                 response += context_info
@@ -244,10 +253,13 @@ class GradioRAGApp:
                 # Tab de administración de keywords (HU2)
                 # El admin panel ya está inicializado en __init__
                 self.admin_panel.create_admin_interface()
-                
+
+                # Tab de diseño de prompts (Sistema de Prompts Dinámicos)
+                self.prompt_design_panel.create_interface()
+
                 # Tab de sistema de memoria (HU4)
                 self.memory_panel.create_memory_interface()
-                
+
                 # Tab de performance (HU5)
                 with gr.TabItem("📊 Performance"):
                     self.performance_panel.create_interface()
